@@ -1,5 +1,6 @@
 from fastapi import Header
 
+
 def get_current_tenant(x_tenant_id: str = Header(default="tenant-a")) -> str:
     """
     Extracts the tenant ID from the X-Tenant-ID header.

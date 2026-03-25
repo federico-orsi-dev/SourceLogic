@@ -4,24 +4,25 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
+
+from backend.app.core.config import settings
+from backend.app.models import Message
 
 # --- IMPORT MODERNI LANGCHAIN 0.3 (FIXED) ---
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.retrieval import create_retrieval_chain
-from langchain_core.prompts import PromptTemplate
 from langchain_community.vectorstores import Chroma
+from langchain_core.prompts import PromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
-# --------------------------------------------
 
+# --------------------------------------------
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from backend.app.core.config import settings
-from backend.app.models import Message
 
 logger = logging.getLogger(__name__)
 
@@ -105,19 +106,49 @@ class CodeParser:
 
     def _iter_files(self, base_path: Path):
         ignored_dirs = {
-            ".next", "_next", "out", "build", "dist", "static", "public",
-            "coverage", "node_modules", "jspm_packages", "bower_components",
-            "bin", "obj", "packages", "testresults", ".nuget", ".venv",
-            "venv", "env", "__pycache__", ".pytest_cache", ".git",
-            ".vscode", ".idea", ".vs",
+            ".next",
+            "_next",
+            "out",
+            "build",
+            "dist",
+            "static",
+            "public",
+            "coverage",
+            "node_modules",
+            "jspm_packages",
+            "bower_components",
+            "bin",
+            "obj",
+            "packages",
+            "testresults",
+            ".nuget",
+            ".venv",
+            "venv",
+            "env",
+            "__pycache__",
+            ".pytest_cache",
+            ".git",
+            ".vscode",
+            ".idea",
+            ".vs",
         }
 
         extensions = (
             self.include_extensions
             if self.include_extensions
             else {
-                ".py", ".js", ".ts", ".tsx", ".jsx", ".cs", ".java",
-                ".go", ".rs", ".c", ".cpp", ".h",
+                ".py",
+                ".js",
+                ".ts",
+                ".tsx",
+                ".jsx",
+                ".cs",
+                ".java",
+                ".go",
+                ".rs",
+                ".c",
+                ".cpp",
+                ".h",
             }
         )
 
@@ -170,9 +201,15 @@ class CodeParser:
     @staticmethod
     def _is_crucial_json(path: Path) -> bool:
         crucial_json = {
-            "package.json", "tsconfig.json", "tsconfig.base.json",
-            "tsconfig.app.json", "tsconfig.node.json", "pyrightconfig.json",
-            "openapi.json", "swagger.json", "appsettings.json",
+            "package.json",
+            "tsconfig.json",
+            "tsconfig.base.json",
+            "tsconfig.app.json",
+            "tsconfig.node.json",
+            "pyrightconfig.json",
+            "openapi.json",
+            "swagger.json",
+            "appsettings.json",
             "appsettings.development.json",
         }
         return path.name.lower() in crucial_json
@@ -233,7 +270,7 @@ class SourceCodeSplitter:
     def __init__(self, max_chars: int = 1500) -> None:
         self.max_chars = max_chars
 
-    def split_file(self, text: str, language: str, file_path: str) -> list[ChunkRecord]:
+    def split_file(self, text: str, language: str, _file_path: str) -> list[ChunkRecord]:
         blocks = self._split_by_language_blocks(text, language)
         if not blocks:
             return []
@@ -304,7 +341,7 @@ class SourceCodeSplitter:
         boundaries = sorted(set(boundaries))
 
         blocks: list[tuple[int, str]] = []
-        for start, end in zip(boundaries, boundaries[1:]):
+        for start, end in zip(boundaries, boundaries[1:], strict=True):
             chunk = text[start:end]
             if chunk.strip():
                 blocks.append((start, chunk))
@@ -385,8 +422,10 @@ class AIService:
             input_variables=["context", "input", "chat_history"],
             template=(
                 "You are an expert Software Architect.\n"
-                "Use the following pieces of retrieved context and the chat history to answer the user's question.\n"
-                "If the answer is not in the context, clearly state that you cannot find it in the codebase.\n\n"
+                "Use the following pieces of retrieved context and the chat history "
+                "to answer the user's question.\n"
+                "If the answer is not in the context, clearly state that you cannot "
+                "find it in the codebase.\n\n"
                 "Chat History:\n{chat_history}\n\n"
                 "Context:\n{context}\n\n"
                 "Question: {input}\n"
@@ -414,13 +453,9 @@ class AIService:
         exclude_folders: list[str] | None = None,
     ) -> AsyncIterator[str]:
         chat_history = await self._load_chat_history(session_id)
-        retriever = self._build_retriever(
-            workspace_id, include_extensions, exclude_folders
-        )
+        retriever = self._build_retriever(workspace_id, include_extensions, exclude_folders)
         chain = self._build_qa_chain(retriever)
 
-        async for chunk in chain.astream(
-            {"input": query, "chat_history": chat_history}
-        ):
+        async for chunk in chain.astream({"input": query, "chat_history": chat_history}):
             if "answer" in chunk:
                 yield chunk["answer"]

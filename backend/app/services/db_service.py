@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import AsyncGenerator
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.database import get_db
 from backend.app.models import Message, Session, Workspace
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -35,9 +34,7 @@ class DatabaseService:
         return list(result.scalars().all())
 
     async def get_workspace(self, workspace_id: int) -> Workspace | None:
-        result = await self.session.execute(
-            select(Workspace).where(Workspace.id == workspace_id)
-        )
+        result = await self.session.execute(select(Workspace).where(Workspace.id == workspace_id))
         return result.scalar_one_or_none()
 
     async def update_workspace_status(self, workspace_id: int, status: str) -> None:
@@ -47,9 +44,7 @@ class DatabaseService:
         workspace.status = status
         await self.session.commit()
 
-    async def update_last_indexed_at(
-        self, workspace_id: int, timestamp: datetime
-    ) -> None:
+    async def update_last_indexed_at(self, workspace_id: int, timestamp: datetime) -> None:
         workspace = await self.get_workspace(workspace_id)
         if not workspace:
             return

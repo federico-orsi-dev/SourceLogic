@@ -1,20 +1,19 @@
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncGenerator, Literal
+from collections.abc import AsyncGenerator
+from typing import Any, Literal
 
+from backend.app.api.dependencies import get_current_tenant
+from backend.app.core.database import get_db
+from backend.app.models import Message, Session, Workspace
+from backend.app.schemas.message import MessageRead
+from backend.app.services.chat_service import ChatService
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from backend.app.core.database import get_db
-from backend.app.api.dependencies import get_current_tenant
-from backend.app.models import Message, Session, Workspace
-from backend.app.schemas.message import MessageRead
-from backend.app.services.chat_service import ChatService
-
 
 router = APIRouter(prefix="", tags=["sessions"])
 
@@ -37,14 +36,14 @@ def _sse_event(event: str, payload: dict[str, Any]) -> str:
 
 @router.get("/sessions/{session_id}/history", response_model=list[MessageRead])
 async def get_session_history(
-    session_id: int, 
+    session_id: int,
     db: AsyncSession = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
 ) -> list[MessageRead]:
     session = await db.get(Session, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
-        
+
     workspace = await db.get(Workspace, session.workspace_id)
     if not workspace or workspace.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Session not found.")
@@ -86,9 +85,7 @@ async def stream_chat(
                 workspace_id=payload.workspace_id,
                 tenant_id=tenant_id,
                 model=payload.model,
-                filters=payload.filters.model_dump(exclude_none=True)
-                if payload.filters
-                else None,
+                filters=payload.filters.model_dump(exclude_none=True) if payload.filters else None,
             ):
                 event_type = str(event.get("type", "message"))
                 if event_type == "token":

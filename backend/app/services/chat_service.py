@@ -1,22 +1,23 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncGenerator, Literal
+from collections.abc import AsyncGenerator
+from typing import Any, Literal
+
+from backend.app.core.config import settings
+from backend.app.models import Message
+from langchain_community.vectorstores import Chroma
 
 # --- MEMORIA DISABILITATA PER FIX DEPENDENCY HELL ---
 # from langchain.memory import ConversationBufferWindowMemory
 # ----------------------------------------------------
-
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from backend.app.core.config import settings
-from backend.app.models import Message
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,12 @@ class ChatService:
 
     async def _load_memory(self, session_id: int) -> list:
         # Load the last 20 messages to keep the context window reasonable
-        stmt = select(Message).where(Message.session_id == session_id).order_by(Message.timestamp.desc()).limit(20)
+        stmt = (
+            select(Message)
+            .where(Message.session_id == session_id)
+            .order_by(Message.timestamp.desc())
+            .limit(20)
+        )
         result = await self.db_session.execute(stmt)
         messages_db = list(result.scalars().all())
         messages_db.reverse()  # chronological order
@@ -121,8 +127,8 @@ class ChatService:
         query: str,
         session_id: int,
         workspace_id: int,
-        tenant_id: str, # Added tenant_id
-        model: str, # Changed type hint from str | None to str
+        tenant_id: str,
+        model: str,
         filters: dict[str, Any] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
         try:
@@ -130,18 +136,20 @@ class ChatService:
                 query=query,
                 session_id=session_id,
                 workspace_id=workspace_id,
-                tenant_id=tenant_id, # Passed tenant_id
+                tenant_id=tenant_id,
                 model=model or "gpt-4o",
                 filters=filters,
             )
         except ValidationError as exc:
-            raise ValueError(
-                "Invalid query, session_id, workspace_id, or model."
-            ) from exc
+            raise ValueError("Invalid query, session_id, workspace_id, or model.") from exc
 
         chat_history = await self._load_memory(request.session_id)
 
-        retriever = self._build_retriever(request.workspace_id, request.tenant_id, request.filters)
+        retriever = self._build_retriever(
+            request.workspace_id,
+            request.tenant_id,
+            request.filters,
+        )
         documents = await retriever.ainvoke(request.query)
         citations = self._build_citations(documents)
         context = self._build_context(documents, citations)
@@ -150,7 +158,7 @@ class ChatService:
 
         prompt_messages = self.prompt.format_messages(
             context=context,
-            chat_history=chat_history, 
+            chat_history=chat_history,
             input=request.query,
         )
         llm = self._create_llm(request.model)
@@ -169,20 +177,17 @@ class ChatService:
                     "file_path": metadata.get("file_path"),
                     "file_name": metadata.get("file_name"),
                     "line_start": metadata.get("line_start"),
-                    "extension": metadata.get("file_extension")
-                    or metadata.get("extension"),
+                    "extension": metadata.get("file_extension") or metadata.get("extension"),
                 }
             )
         return citations
 
-    def _build_context(
-        self, documents: list[Any], citations: list[dict[str, Any]]
-    ) -> str:
+    def _build_context(self, documents: list[Any], citations: list[dict[str, Any]]) -> str:
         if not documents:
             return "No relevant source chunks were retrieved."
 
         blocks: list[str] = []
-        for citation, document in zip(citations, documents):
+        for citation, document in zip(citations, documents, strict=True):
             path = citation.get("file_path") or "unknown"
             line = citation.get("line_start") or "?"
             chunk_id = citation.get("chunk_id")

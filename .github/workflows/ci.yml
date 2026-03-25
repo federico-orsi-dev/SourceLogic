@@ -1,0 +1,56 @@
+name: CI-Quality-Gate
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop, master ]
+
+# Evita di far girare più workflow sulla stessa PR contemporaneamente
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend # RIMUOVI se il pyproject.toml è nella root
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install Dependencies
+        # --frozen garantisce che uv non aggiorni il lock file in CI
+        run: uv sync --frozen --all-extras --dev
+
+      - name: Lint & Format (Ruff)
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Static Typing (Mypy)
+        run: uv run mypy . --ignore-missing-imports
+
+      - name: Security Scan (Bandit)
+        run: uv run bandit -r . -ll
+
+      - name: Test with Coverage
+        env:
+          OPENAI_API_KEY: ci-test-key
+          DATABASE_URL: sqlite+aiosqlite:///./data/ci.db
+        run: |
+          uv run pytest -q --maxfail=1 --cov=. --cov-report=term-missing --cov-fail-under=40
