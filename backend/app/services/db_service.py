@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from datetime import datetime
+from typing import Any
 
 from backend.app.core.database import get_db
 from backend.app.models import Message, Session, Workspace
@@ -63,7 +64,7 @@ class DatabaseService:
         session_id: int,
         role: str,
         content: str,
-        sources: dict | None = None,
+        sources: dict[str, Any] | None = None,
         timestamp: datetime | None = None,
     ) -> Message:
         message = Message(

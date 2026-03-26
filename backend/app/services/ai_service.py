@@ -4,10 +4,10 @@ import hashlib
 import json
 import logging
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from backend.app.core.config import settings
 from backend.app.models import Message
@@ -104,7 +104,7 @@ class CodeParser:
         self.manifest_file.write_text(json.dumps(self._manifest, indent=2), "utf-8")
         self._dirty = False
 
-    def _iter_files(self, base_path: Path):
+    def _iter_files(self, base_path: Path) -> Iterator[Path]:
         ignored_dirs = {
             ".next",
             "_next",
@@ -239,7 +239,10 @@ class CodeParser:
         if not self.manifest_file.exists():
             return {}
         try:
-            return json.loads(self.manifest_file.read_text(encoding="utf-8"))
+            return cast(
+                dict[str, dict[str, str]],
+                json.loads(self.manifest_file.read_text(encoding="utf-8")),
+            )
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning("Failed to read manifest: %s", exc)
             return {}
@@ -395,7 +398,7 @@ class AIService:
         workspace_id: int,
         include_extensions: list[str] | None,
         exclude_folders: list[str] | None,
-    ):
+    ) -> Any:
         where: dict[str, Any] = {"workspace_id": workspace_id}
 
         if include_extensions:
@@ -417,7 +420,7 @@ class AIService:
 
         return self.vectorstore.as_retriever(search_kwargs={"k": 5, "filter": where})
 
-    def _build_qa_chain(self, retriever):
+    def _build_qa_chain(self, retriever: Any) -> Any:
         prompt = PromptTemplate(
             input_variables=["context", "input", "chat_history"],
             template=(

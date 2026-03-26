@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from backend.app.core.config import settings
 from backend.app.models import Message
@@ -11,7 +11,7 @@ from langchain_community.vectorstores import Chroma
 # --- MEMORIA DISABILITATA PER FIX DEPENDENCY HELL ---
 # from langchain.memory import ConversationBufferWindowMemory
 # ----------------------------------------------------
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
@@ -80,7 +80,7 @@ class ChatService:
     ) -> ChatOpenAI:
         return ChatOpenAI(model=model_name, api_key=self.api_key, streaming=True)
 
-    async def _load_memory(self, session_id: int) -> list:
+    async def _load_memory(self, session_id: int) -> list[BaseMessage]:
         # Load the last 20 messages to keep the context window reasonable
         stmt = (
             select(Message)
@@ -92,7 +92,7 @@ class ChatService:
         messages_db = list(result.scalars().all())
         messages_db.reverse()  # chronological order
 
-        chat_history = []
+        chat_history: list[BaseMessage] = []
         for msg in messages_db:
             if msg.role == "user":
                 chat_history.append(HumanMessage(content=msg.content))
@@ -100,7 +100,9 @@ class ChatService:
                 chat_history.append(AIMessage(content=msg.content))
         return chat_history
 
-    def _build_retriever(self, workspace_id: int, tenant_id: str, filters: _ChatFilters | None):
+    def _build_retriever(
+        self, workspace_id: int, tenant_id: str, filters: _ChatFilters | None
+    ) -> Any:
         where: dict[str, Any] = {"$and": [{"workspace_id": workspace_id}, {"tenant_id": tenant_id}]}
 
         if filters and filters.include_extensions:
@@ -131,14 +133,18 @@ class ChatService:
         model: str,
         filters: dict[str, Any] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
+        normalized_model = (
+            model if model in {"gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"} else "gpt-4o"
+        )
+        normalized_filters = _ChatFilters.model_validate(filters) if filters is not None else None
         try:
             request = _ChatRequest(
                 query=query,
                 session_id=session_id,
                 workspace_id=workspace_id,
                 tenant_id=tenant_id,
-                model=model or "gpt-4o",
-                filters=filters,
+                model=cast(Any, normalized_model),
+                filters=normalized_filters,
             )
         except ValidationError as exc:
             raise ValueError("Invalid query, session_id, workspace_id, or model.") from exc
