@@ -2,9 +2,9 @@ name: CI-Quality-Gate
 
 on:
   push:
-    branches: [ develop ]
+    branches: [develop]
   pull_request:
-    branches: [ develop, main, master ]
+    branches: [develop, main, master]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: backend # Mantenuto perché il tuo codice è in /backend
+        working-directory: backend
 
     steps:
       - name: Checkout repository
@@ -33,7 +33,6 @@ jobs:
         run: uv python install 3.12
 
       - name: Install Dependencies
-        # --frozen è perfetto per la CI: evita modifiche inaspettate al lockfile
         run: uv sync --frozen --all-groups
 
       - name: Lint & Format (Ruff)
@@ -45,8 +44,7 @@ jobs:
         run: uv run mypy . --ignore-missing-imports
 
       - name: Security Scan (Bandit)
-        # FIX CRITICO: Escludiamo .venv per evitare il freeze di 6 minuti
-        run: uv run bandit -r . -x .venv,tests -ll
+        run: uv run bandit -r app -ll
 
       - name: Test with Coverage
         env:
