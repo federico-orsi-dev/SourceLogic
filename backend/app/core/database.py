@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
+from backend.app.core.config import settings
+from backend.app.models import Base
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-
-from backend.app.core.config import settings
-from backend.app.models import Base
 
 
 def create_engine() -> AsyncEngine:

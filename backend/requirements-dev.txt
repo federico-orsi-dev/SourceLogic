@@ -1,0 +1,10 @@
+-r requirements.txt
+# Quality Gate Tools
+ruff
+mypy
+bandit
+# Testing & Coverage
+pytest-cov
+pytest-asyncio
+# Strumenti opzionali ma consigliati
+ipykernel

@@ -1,0 +1,62 @@
+[project]
+name = "sourcelogic-saas-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.100",
+    "uvicorn",
+    "langchain>=0.3.0",
+    "langchain-community",
+    "langchain-openai",
+    "langchain-huggingface",
+    "langchain-core",
+    "chromadb",
+    "sentence-transformers",
+    "tiktoken",
+    "pydantic-settings",
+    "python-dotenv",
+    "sqlalchemy>=2.0.0",
+    "aiosqlite",
+]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "mypy",
+    "bandit",
+    "pytest",
+    "pytest-cov",
+    "pytest-asyncio",
+    "httpx",
+    "ipykernel",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4", "UP", "ARG"]
+ignore = [
+    "B008",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app", "tests"]
+strict = true
+ignore_missing_imports = true
+pretty = true
+show_error_codes = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = "-q"

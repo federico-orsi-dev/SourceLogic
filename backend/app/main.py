@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from backend.app.api.v1 import sessions_router, workspaces_router
+from backend.app.core.database import init_db
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from backend.app.api.v1 import sessions_router, workspaces_router
-from backend.app.core.database import init_db
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BACKEND_DIR / ".env")

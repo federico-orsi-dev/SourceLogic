@@ -47,5 +47,5 @@ settings.CHROMA_PATH = str(_resolve_path(settings.CHROMA_PATH))
 
 try:
     settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
-except Exception as e:
-    print(f"CRITICAL WARNING: Could not create data directory at {settings.DATA_DIR}: {e}")
+except Exception as exc:
+    print(f"CRITICAL WARNING: Could not create data directory at {settings.DATA_DIR}: {exc}")
