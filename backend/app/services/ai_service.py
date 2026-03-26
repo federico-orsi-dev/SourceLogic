@@ -226,7 +226,7 @@ class CodeParser:
 
     def _hash_file(self, file_path: Path) -> str | None:
         try:
-            hasher = hashlib.md5()
+            hasher = hashlib.md5(usedforsecurity=False)
             with file_path.open("rb") as handle:
                 for chunk in iter(lambda: handle.read(8192), b""):
                     hasher.update(chunk)
