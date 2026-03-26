@@ -4,16 +4,17 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-# --- FIX IMPORT: Usa langchain_core per compatibilità 0.3+ ---
-from langchain_core.documents import Document
-from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from pydantic import BaseModel, DirectoryPath, ValidationError
-
 from backend.app.core.config import settings
 from backend.app.models import Workspace, WorkspaceStatus
+
 # Assicuriamoci di importare il parser dal servizio AI (dove lo hai spostato)
 from backend.app.services.ai_service import CodeParser, SourceCodeSplitter
+from langchain_community.vectorstores import Chroma
+
+# --- FIX IMPORT: Usa langchain_core per compatibilità 0.3+ ---
+from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
+from pydantic import BaseModel, DirectoryPath, ValidationError
 
 if TYPE_CHECKING:
     from backend.app.services.db_service import DatabaseService
@@ -40,20 +41,14 @@ class IngestionService:
         self.splitter = SourceCodeSplitter()
 
     async def ingest_codebase(
-        self, workspace: Workspace, db_service: "DatabaseService"
+        self, workspace: Workspace, db_service: DatabaseService
     ) -> dict[str, int]:
-        logger.info(
-            f"🚀 STARTING INGESTION for Workspace {workspace.id} at {workspace.root_path}"
-        )
-        await db_service.update_workspace_status(
-            workspace.id, WorkspaceStatus.INDEXING
-        )
+        logger.info(f"🚀 STARTING INGESTION for Workspace {workspace.id} at {workspace.root_path}")
+        await db_service.update_workspace_status(workspace.id, WorkspaceStatus.INDEXING)
         try:
             _ = _IngestRequest(source_path=workspace.root_path)
         except ValidationError as exc:
-            await db_service.update_workspace_status(
-                workspace.id, WorkspaceStatus.FAILED
-            )
+            await db_service.update_workspace_status(workspace.id, WorkspaceStatus.FAILED)
             raise ValueError(f"Invalid source_path: {workspace.root_path}") from exc
 
         parser = CodeParser(
@@ -69,7 +64,7 @@ class IngestionService:
 
         try:
             changed_files, removed_files = parser.scan(workspace.id)
-            
+
             # --- FIX: Sintassi corretta per ChromaDB ($and) ---
             for removed_path in removed_files:
                 self.vectorstore.delete(
@@ -77,7 +72,7 @@ class IngestionService:
                         "$and": [
                             {"workspace_id": workspace.id},
                             {"tenant_id": workspace.tenant_id},
-                            {"file_path": removed_path}
+                            {"file_path": removed_path},
                         ]
                     }
                 )
@@ -113,7 +108,7 @@ class IngestionService:
                         "$and": [
                             {"workspace_id": workspace.id},
                             {"tenant_id": workspace.tenant_id},
-                            {"file_path": file_record.file_path}
+                            {"file_path": file_record.file_path},
                         ]
                     }
                 )
@@ -124,13 +119,11 @@ class IngestionService:
 
             parser.persist_manifest()
             # self.vectorstore.persist()  <-- RIMOSSO: Non serve più nelle nuove versioni
-            
-        except Exception as exc:  # noqa: BLE001
-            await db_service.update_workspace_status(
-                workspace.id, WorkspaceStatus.FAILED
-            )
+
+        except Exception:  # noqa: BLE001
+            await db_service.update_workspace_status(workspace.id, WorkspaceStatus.FAILED)
             logger.exception("Indexing failed for workspace %s", workspace.id)
-            raise exc
+            raise
 
         await db_service.update_workspace_status(workspace.id, WorkspaceStatus.IDLE)
         await db_service.update_last_indexed_at(workspace.id, datetime.utcnow())

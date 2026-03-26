@@ -1,0 +1,54 @@
+name: CI-Quality-Gate
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop, main, master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install Dependencies
+        run: uv sync --frozen --all-groups
+
+      - name: Lint & Format (Ruff)
+        run: |
+          uv run ruff check . --output-format=github
+          uv run ruff format --check .
+
+      - name: Static Typing (Mypy)
+        run: uv run mypy . --ignore-missing-imports
+
+      - name: Security Scan (Bandit)
+        run: uv run bandit -r app -ll
+
+      - name: Test with Coverage
+        env:
+          OPENAI_API_KEY: ci-test-key
+          DATABASE_URL: sqlite+aiosqlite:///./data/ci.db
+        run: |
+          uv run pytest -q --maxfail=1 --cov=. --cov-report=term-missing --cov-fail-under=40

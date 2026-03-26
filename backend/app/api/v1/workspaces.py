@@ -1,23 +1,21 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import IntegrityError
-
-from backend.app.core.database import get_db
 from backend.app.api.dependencies import get_current_tenant
+from backend.app.core.database import get_db
 from backend.app.models import Session, Workspace
 from backend.app.schemas.session import SessionCreate
 from backend.app.schemas.workspace import WorkspaceCreate, WorkspaceRead, WorkspaceStatusRead
 from backend.app.services.db_service import DatabaseService
 from backend.app.services.ingest_service import IngestionService
-
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="", tags=["workspaces"])
 ingestion_tasks: dict[str, dict[str, Any]] = {}
@@ -34,9 +32,7 @@ async def _run_ingestion_task(task_id: str, workspace_id: int) -> None:
         if workspace is None:
             ingestion_tasks[task_id]["status"] = "failed"
             ingestion_tasks[task_id]["error"] = "Workspace not found."
-            ingestion_tasks[task_id]["completed_at"] = datetime.now(
-                timezone.utc
-            ).isoformat()
+            ingestion_tasks[task_id]["completed_at"] = datetime.now(UTC).isoformat()
             return
 
         service = IngestionService()
@@ -48,9 +44,7 @@ async def _run_ingestion_task(task_id: str, workspace_id: int) -> None:
             ingestion_tasks[task_id]["status"] = "failed"
             ingestion_tasks[task_id]["error"] = str(exc)
         finally:
-            ingestion_tasks[task_id]["completed_at"] = datetime.now(
-                timezone.utc
-            ).isoformat()
+            ingestion_tasks[task_id]["completed_at"] = datetime.now(UTC).isoformat()
 
 
 @router.get("/workspaces", response_model=list[WorkspaceRead])
@@ -79,23 +73,27 @@ async def create_workspace(
     existing_result = await db.execute(
         select(Workspace).where(
             func.lower(Workspace.root_path) == normalized_root_path.lower(),
-            Workspace.tenant_id == tenant_id
+            Workspace.tenant_id == tenant_id,
         )
     )
     existing_workspace = existing_result.scalar_one_or_none()
     if existing_workspace is not None:
         return existing_workspace
 
-    workspace = Workspace(name=payload.name, root_path=normalized_root_path, tenant_id=tenant_id)
+    workspace = Workspace(
+        name=payload.name,
+        root_path=normalized_root_path,
+        tenant_id=tenant_id,
+    )
     db.add(workspace)
     try:
         await db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
         existing_result = await db.execute(
             select(Workspace).where(
                 func.lower(Workspace.root_path) == normalized_root_path.lower(),
-                Workspace.tenant_id == tenant_id
+                Workspace.tenant_id == tenant_id,
             )
         )
         existing_workspace = existing_result.scalar_one_or_none()
@@ -104,7 +102,7 @@ async def create_workspace(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Workspace path already exists.",
-        )
+        ) from exc
 
     await db.refresh(workspace)
     return workspace
@@ -165,7 +163,7 @@ async def ingest_workspace(
         "task_id": task_id,
         "workspace_id": workspace_id,
         "status": "queued",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "completed_at": None,
         "error": None,
     }
@@ -206,7 +204,7 @@ async def delete_workspace(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to clean workspace vectors: {exc}",
-        )
+        ) from exc
 
     try:
         await db.delete(workspace)
@@ -216,7 +214,7 @@ async def delete_workspace(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete workspace: {exc}",
-        )
+        ) from exc
 
     for task_id, task in list(ingestion_tasks.items()):
         if task.get("workspace_id") == workspace_id:
