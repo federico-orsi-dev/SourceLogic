@@ -2,7 +2,7 @@ name: CI-Quality-Gate
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, main]
   pull_request:
     branches: [develop, main, master]
 
@@ -41,14 +41,56 @@ jobs:
           uv run ruff format --check .
 
       - name: Static Typing (Mypy)
-        run: uv run mypy . --ignore-missing-imports
+        run: uv run mypy
 
       - name: Security Scan (Bandit)
-        run: uv run bandit -r app -ll
+        run: uv run bandit -r app -l
+
+      - name: Verify Alembic migrations
+        env:
+          OPENAI_API_KEY: ci-test-key
+          DATABASE_URL: sqlite+aiosqlite:///./data/alembic_ci.db
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
 
       - name: Test with Coverage
         env:
           OPENAI_API_KEY: ci-test-key
           DATABASE_URL: sqlite+aiosqlite:///./data/ci.db
         run: |
-          uv run pytest -q --maxfail=1 --cov=. --cov-report=term-missing --cov-fail-under=40
+          uv run pytest -q --maxfail=1 --cov --cov-report=term-missing --cov-fail-under=70
+
+  frontend-typecheck:
+    name: Frontend Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Test
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
