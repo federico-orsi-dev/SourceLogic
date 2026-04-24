@@ -1,0 +1,43 @@
+# Python bytecode & cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Secrets (never expose)
+.env
+
+# Build & distribution
+dist/
+build/
+*.egg-info/
+
+# Git internals
+.git/
+
+# Local data (vector store, SQLite DB, logs)
+backend/data/
+*.db
+*.sqlite
+*.log
+
+# Node / Frontend build artifacts
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Large lock files (not useful as context)
+uv.lock
+package-lock.json
+
+# Jupyter & notebooks
+.ipynb_checkpoints/
+*.ipynb
