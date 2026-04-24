@@ -1,17 +1,25 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from backend.app.api.dependencies import get_current_tenant
-from backend.app.core.database import get_db
-from backend.app.models import Session, Workspace
-from backend.app.schemas.session import SessionCreate
-from backend.app.schemas.workspace import WorkspaceCreate, WorkspaceRead, WorkspaceStatusRead
-from backend.app.services.db_service import DatabaseService
-from backend.app.services.ingest_service import IngestionService
+from app.api.dependencies import get_current_tenant
+from app.core.config import settings
+from app.core.database import get_db
+from app.models import Session, Workspace
+from app.schemas.payloads import (
+    DeleteResponse,
+    IngestStatusResponse,
+    IngestTaskResponse,
+    SessionCreateResponse,
+)
+from app.schemas.session import SessionCreate, SessionRead
+from app.schemas.workspace import WorkspaceCreate, WorkspaceRead, WorkspaceStatusRead
+from app.services.db_service import DatabaseService
+from app.services.ingest_service import IngestionService
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -20,9 +28,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 router = APIRouter(prefix="", tags=["workspaces"])
 ingestion_tasks: dict[str, dict[str, Any]] = {}
 
+_TASK_TTL = timedelta(hours=1)
+
+
+def _prune_stale_tasks() -> None:
+    """Remove completed ingestion tasks older than _TASK_TTL to prevent unbounded growth."""
+    cutoff = datetime.now(UTC) - _TASK_TTL
+    stale = [
+        tid
+        for tid, task in ingestion_tasks.items()
+        if task.get("completed_at") is not None
+        and datetime.fromisoformat(task["completed_at"]) < cutoff
+    ]
+    for tid in stale:
+        ingestion_tasks.pop(tid, None)
+
 
 async def _run_ingestion_task(task_id: str, workspace_id: int) -> None:
-    from backend.app.core.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
 
     ingestion_tasks[task_id]["status"] = "running"
 
@@ -51,7 +74,7 @@ async def _run_ingestion_task(task_id: str, workspace_id: int) -> None:
 async def list_workspaces(
     db: AsyncSession = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-) -> list[WorkspaceRead]:
+) -> list[Workspace]:
     result = await db.execute(select(Workspace).where(Workspace.tenant_id == tenant_id))
     return list(result.scalars().all())
 
@@ -61,7 +84,7 @@ async def create_workspace(
     payload: WorkspaceCreate,
     db: AsyncSession = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-) -> WorkspaceRead:
+) -> Workspace:
     root_path = Path(payload.root_path)
     if not root_path.exists():
         raise HTTPException(status_code=404, detail="Path not found.")
@@ -69,6 +92,14 @@ async def create_workspace(
         raise HTTPException(status_code=400, detail="Path must be a directory.")
 
     normalized_root_path = str(root_path.resolve())
+
+    if settings.WORKSPACE_ALLOWED_BASE:
+        allowed = Path(settings.WORKSPACE_ALLOWED_BASE).resolve()
+        if not root_path.resolve().is_relative_to(allowed):
+            raise HTTPException(
+                status_code=400,
+                detail="Path must be within the configured workspace base directory.",
+            )
 
     existing_result = await db.execute(
         select(Workspace).where(
@@ -120,13 +151,30 @@ async def get_workspace_status(
     return WorkspaceStatusRead(status=workspace.status)
 
 
-@router.post("/workspaces/{workspace_id}/sessions")
+@router.get("/workspaces/{workspace_id}/sessions", response_model=list[SessionRead])
+async def list_sessions(
+    workspace_id: int,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+) -> list[Session]:
+    workspace = await db.get(Workspace, workspace_id)
+    if not workspace or workspace.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Workspace not found.")
+    result = await db.execute(
+        select(Session)
+        .where(Session.workspace_id == workspace_id)
+        .order_by(Session.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+@router.post("/workspaces/{workspace_id}/sessions", response_model=SessionCreateResponse)
 async def create_session(
     workspace_id: int,
     payload: SessionCreate,
     db: AsyncSession = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-) -> dict[str, int]:
+) -> SessionCreateResponse:
     workspace = await db.get(Workspace, workspace_id)
     if not workspace or workspace.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Workspace not found.")
@@ -136,70 +184,79 @@ async def create_session(
     db.add(session)
     await db.commit()
     await db.refresh(session)
-    return {"session_id": session.id}
+    return SessionCreateResponse(session_id=session.id)
 
 
-@router.post(
-    "/api/v1/workspaces/{workspace_id}/ingest",
-    status_code=status.HTTP_202_ACCEPTED,
-    include_in_schema=False,
-)
 @router.post(
     "/workspaces/{workspace_id}/ingest",
     status_code=status.HTTP_202_ACCEPTED,
+    response_model=IngestTaskResponse,
 )
 async def ingest_workspace(
     workspace_id: int,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-) -> dict[str, str]:
+) -> IngestTaskResponse:
     workspace = await db.get(Workspace, workspace_id)
     if not workspace or workspace.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Workspace not found.")
+
+    _prune_stale_tasks()
+
+    active = [
+        t
+        for t in ingestion_tasks.values()
+        if t.get("workspace_id") == workspace_id and t.get("status") in ("queued", "running")
+    ]
+    if active:
+        raise HTTPException(
+            status_code=409,
+            detail="An ingestion task is already running for this workspace.",
+        )
 
     task_id = str(uuid4())
     ingestion_tasks[task_id] = {
         "task_id": task_id,
         "workspace_id": workspace_id,
+        "tenant_id": tenant_id,
         "status": "queued",
         "created_at": datetime.now(UTC).isoformat(),
         "completed_at": None,
         "error": None,
     }
     background_tasks.add_task(_run_ingestion_task, task_id, workspace_id)
-    return {"task_id": task_id, "status": "queued"}
+    return IngestTaskResponse(task_id=task_id, status="queued")
 
 
-@router.get("/workspaces/ingest/{task_id}")
-async def get_ingest_status(task_id: str) -> dict[str, Any]:
+@router.get("/workspaces/ingest/{task_id}", response_model=IngestStatusResponse)
+async def get_ingest_status(
+    task_id: str,
+    tenant_id: str = Depends(get_current_tenant),
+) -> IngestStatusResponse:
+    _prune_stale_tasks()
     task = ingestion_tasks.get(task_id)
-    if not task:
+    if not task or task.get("tenant_id") != tenant_id:
         raise HTTPException(status_code=404, detail="Ingestion task not found.")
-    return task
+    return IngestStatusResponse(**task)
 
 
-@router.delete("/workspaces/{workspace_id}")
+@router.delete("/workspaces/{workspace_id}", response_model=DeleteResponse)
 async def delete_workspace(
     workspace_id: int,
     db: AsyncSession = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-) -> dict[str, Any]:
+) -> DeleteResponse:
     workspace = await db.get(Workspace, workspace_id)
     if not workspace or workspace.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Workspace not found.")
 
+    def _delete_vectors_sync(wid: int) -> None:
+        svc = IngestionService()
+        svc.vectorstore.delete(where={"$or": [{"workspace_id": wid}, {"workspace_id": str(wid)}]})
+
     try:
-        ingestion_service = IngestionService()
-        ingestion_service.vectorstore.delete(
-            where={
-                "$or": [
-                    {"workspace_id": workspace_id},
-                    {"workspace_id": str(workspace_id)},
-                ]
-            }
-        )
-        ingestion_service.vectorstore.persist()
+        await asyncio.to_thread(_delete_vectors_sync, workspace_id)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=500,
@@ -220,4 +277,4 @@ async def delete_workspace(
         if task.get("workspace_id") == workspace_id:
             ingestion_tasks.pop(task_id, None)
 
-    return {"status": "deleted", "workspace_id": workspace_id}
+    return DeleteResponse(status="deleted", workspace_id=workspace_id)

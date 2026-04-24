@@ -4,27 +4,41 @@ import hashlib
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
-
-from backend.app.core.config import settings
-from backend.app.models import Message
-
-# --- IMPORT MODERNI LANGCHAIN 0.3 (FIXED) ---
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.retrieval import create_retrieval_chain
-from langchain_community.vectorstores import Chroma
-from langchain_core.prompts import PromptTemplate
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_openai import ChatOpenAI
-
-# --------------------------------------------
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import cast
 
 logger = logging.getLogger(__name__)
+
+_LANGUAGE_MAP: dict[str, str] = {
+    ".py": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".java": "java",
+    ".cs": "csharp",
+    ".go": "go",
+    ".rs": "rust",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".h": "c",
+    ".rb": "ruby",
+    ".php": "php",
+    ".swift": "swift",
+    ".kt": "kotlin",
+    ".scala": "scala",
+    ".sql": "sql",
+    ".sh": "bash",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".json": "json",
+    ".xml": "xml",
+    ".html": "html",
+    ".css": "css",
+    ".md": "markdown",
+}
 
 
 @dataclass(frozen=True)
@@ -157,12 +171,12 @@ class CodeParser:
             for dir_name in dirs:
                 dir_path = root / dir_name
                 if dir_name.lower() in ignored_dirs:
-                    logger.info(f"🚫 [SKIP] Directory ignored: {dir_name}")
+                    logger.info("🚫 [SKIP] Directory ignored: %s", dir_name)
                     continue
                 if self.exclude_folders and any(
                     token and token in str(dir_path) for token in self.exclude_folders
                 ):
-                    logger.info(f"🚫 [SKIP] Directory ignored: {dir_name}")
+                    logger.info("🚫 [SKIP] Directory ignored: %s", dir_name)
                     continue
                 allowed_dirs.append(dir_name)
             dirs[:] = allowed_dirs
@@ -171,9 +185,9 @@ class CodeParser:
                 path = root / filename
                 skip_reason = self._skip_file_reason(path, extensions)
                 if skip_reason:
-                    logger.info(f"🚫 [SKIP] File ignored: {filename}")
+                    logger.info("🚫 [SKIP] File ignored: %s", filename)
                     continue
-                logger.info(f"✅ [SCAN] Accepted: {path.name} (in {path.parent.name})")
+                logger.info("✅ [SCAN] Accepted: %s (in %s)", path.name, path.parent.name)
                 yield path
 
     def _skip_file_reason(self, path: Path, extensions: set[str]) -> str | None:
@@ -262,11 +276,7 @@ class CodeParser:
 
     @staticmethod
     def _detect_language(extension: str) -> str:
-        if extension in {".js", ".jsx"}:
-            return "javascript"
-        if extension in {".ts", ".tsx"}:
-            return "typescript"
-        return "python"
+        return _LANGUAGE_MAP.get(extension, "text")
 
 
 class SourceCodeSplitter:
@@ -344,7 +354,7 @@ class SourceCodeSplitter:
         boundaries = sorted(set(boundaries))
 
         blocks: list[tuple[int, str]] = []
-        for start, end in zip(boundaries, boundaries[1:], strict=True):
+        for start, end in zip(boundaries, boundaries[1:], strict=False):
             chunk = text[start:end]
             if chunk.strip():
                 blocks.append((start, chunk))
@@ -353,112 +363,3 @@ class SourceCodeSplitter:
     @staticmethod
     def _line_start(text: str, start_index: int) -> int:
         return text[:start_index].count("\n") + 1
-
-
-class AIService:
-    def __init__(
-        self,
-        db_session: AsyncSession,
-        persist_directory: str | None = None,
-        model_name: str = "gpt-4o",
-    ) -> None:
-        self.db_session = db_session
-        self.persist_directory = persist_directory or settings.CHROMA_PATH
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",
-            model_kwargs={"device": "cpu"},
-        )
-        self.vectorstore = Chroma(
-            persist_directory=self.persist_directory,
-            embedding_function=self.embeddings,
-        )
-        self.llm = ChatOpenAI(
-            model=model_name,
-            api_key=settings.OPENAI_API_KEY,
-            streaming=True,
-        )
-
-    async def _load_chat_history(self, session_id: int) -> str:
-        stmt = (
-            select(Message)
-            .where(Message.session_id == session_id)
-            .order_by(Message.timestamp.desc())
-            .limit(5)
-        )
-        result = await self.db_session.execute(stmt)
-        messages = list(result.scalars().all())
-        history_lines = []
-        for message in reversed(messages):
-            role = "User" if message.role == "user" else "Assistant"
-            history_lines.append(f"{role}: {message.content}")
-        return "\n".join(history_lines)
-
-    def _build_retriever(
-        self,
-        workspace_id: int,
-        include_extensions: list[str] | None,
-        exclude_folders: list[str] | None,
-    ) -> Any:
-        where: dict[str, Any] = {"workspace_id": workspace_id}
-
-        if include_extensions:
-            normalized = []
-            for ext in include_extensions:
-                value = ext.strip().lower()
-                if not value:
-                    continue
-                if not value.startswith("."):
-                    value = f".{value}"
-                normalized.append(value)
-            if normalized:
-                where = {"$and": [where, {"extension": {"$in": normalized}}]}
-
-        if exclude_folders:
-            excludes = [folder.strip() for folder in exclude_folders if folder.strip()]
-            if excludes:
-                where = {"$and": [where, {"file_path": {"$nin": excludes}}]}
-
-        return self.vectorstore.as_retriever(search_kwargs={"k": 5, "filter": where})
-
-    def _build_qa_chain(self, retriever: Any) -> Any:
-        prompt = PromptTemplate(
-            input_variables=["context", "input", "chat_history"],
-            template=(
-                "You are an expert Software Architect.\n"
-                "Use the following pieces of retrieved context and the chat history "
-                "to answer the user's question.\n"
-                "If the answer is not in the context, clearly state that you cannot "
-                "find it in the codebase.\n\n"
-                "Chat History:\n{chat_history}\n\n"
-                "Context:\n{context}\n\n"
-                "Question: {input}\n"
-                "Answer:"
-            ),
-        )
-
-        combine_docs_chain = create_stuff_documents_chain(
-            llm=self.llm,
-            prompt=prompt,
-            document_variable_name="context",
-        )
-
-        return create_retrieval_chain(
-            retriever=retriever,
-            combine_docs_chain=combine_docs_chain,
-        )
-
-    async def stream_answer(
-        self,
-        query: str,
-        session_id: int,
-        workspace_id: int,
-        include_extensions: list[str] | None = None,
-        exclude_folders: list[str] | None = None,
-    ) -> AsyncIterator[str]:
-        chat_history = await self._load_chat_history(session_id)
-        retriever = self._build_retriever(workspace_id, include_extensions, exclude_folders)
-        chain = self._build_qa_chain(retriever)
-
-        async for chunk in chain.astream({"input": query, "chat_history": chat_history}):
-            if "answer" in chunk:
-                yield chunk["answer"]

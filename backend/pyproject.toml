@@ -6,17 +6,20 @@ dependencies = [
     "fastapi>=0.100",
     "uvicorn",
     "langchain>=0.3.0",
+    "langchain-chroma",
     "langchain-community",
     "langchain-openai",
     "langchain-huggingface",
     "langchain-core",
-    "chromadb",
+    "chromadb>=1.5.5",
     "sentence-transformers",
     "tiktoken",
     "pydantic-settings",
     "python-dotenv",
     "sqlalchemy>=2.0.0",
     "aiosqlite",
+    "alembic>=1.18.4",
+    "slowapi>=0.1.9",
 ]
 
 [dependency-groups]
@@ -35,6 +38,8 @@ dev = [
 line-length = 100
 target-version = "py312"
 src = ["app", "tests"]
+# Alembic migrations are auto-generated — exclude from lint/format enforcement.
+exclude = ["alembic/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "C4", "UP", "ARG"]
@@ -52,6 +57,7 @@ python_version = "3.12"
 files = ["app", "tests"]
 strict = true
 ignore_missing_imports = true
+explicit_package_bases = true
 pretty = true
 show_error_codes = true
 
@@ -60,3 +66,13 @@ testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 addopts = "-q"
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]

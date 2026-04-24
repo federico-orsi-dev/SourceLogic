@@ -4,43 +4,25 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Any, Literal, cast
 
-from backend.app.core.config import settings
-from backend.app.models import Message
-from langchain_community.vectorstores import Chroma
-
-# --- MEMORIA DISABILITATA PER FIX DEPENDENCY HELL ---
-# from langchain.memory import ConversationBufferWindowMemory
-# ----------------------------------------------------
+from app.core.config import settings
+from app.core.vectorstore import get_vectorstore
+from app.models import Message
+from app.schemas.payloads import ChatStreamFilters
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, ValidationError
+from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 
-class _ChatFilters(BaseModel):
-    include_extensions: list[str] | None = None
-    exclude_folders: list[str] | None = None
-
-
-class _ChatRequest(BaseModel):
-    query: str
-    session_id: int
-    workspace_id: int
-    tenant_id: str
-    model: Literal["gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"] = "gpt-4o"
-    filters: _ChatFilters | None = None
-
-
 class ChatService:
     def __init__(
         self,
         db_session: AsyncSession,
-        persist_directory: str | None = None,
+        vectorstore: Any | None = None,
     ) -> None:
         api_key = settings.OPENAI_API_KEY
 
@@ -49,15 +31,7 @@ class ChatService:
 
         self.api_key = api_key
         self.db_session = db_session
-        self.persist_directory = persist_directory or settings.CHROMA_PATH
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2",
-            model_kwargs={"device": "cpu"},
-        )
-        self.vectorstore = Chroma(
-            persist_directory=self.persist_directory,
-            embedding_function=self.embeddings,
-        )
+        self.vectorstore = vectorstore if vectorstore is not None else get_vectorstore()
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 (
@@ -78,7 +52,7 @@ class ChatService:
     def _create_llm(
         self, model_name: Literal["gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"]
     ) -> ChatOpenAI:
-        return ChatOpenAI(model=model_name, api_key=self.api_key, streaming=True)
+        return ChatOpenAI(model=model_name, api_key=SecretStr(self.api_key), streaming=True)
 
     async def _load_memory(self, session_id: int) -> list[BaseMessage]:
         # Load the last 20 messages to keep the context window reasonable
@@ -101,7 +75,7 @@ class ChatService:
         return chat_history
 
     def _build_retriever(
-        self, workspace_id: int, tenant_id: str, filters: _ChatFilters | None
+        self, workspace_id: int, tenant_id: str, filters: ChatStreamFilters | None
     ) -> Any:
         where: dict[str, Any] = {"$and": [{"workspace_id": workspace_id}, {"tenant_id": tenant_id}]}
 
@@ -117,12 +91,16 @@ class ChatService:
             if normalized:
                 where["$and"].append({"file_extension": {"$in": normalized}})
 
-        if filters and filters.exclude_folders:
-            excludes = [folder.strip() for folder in filters.exclude_folders if folder]
-            if excludes:
-                where["$and"].append({"file_path": {"$nin": excludes}})
-
-        return self.vectorstore.as_retriever(search_kwargs={"k": 5, "filter": where})
+        # NOTE: exclude_folders is intentionally NOT pushed into ChromaDB here.
+        # ChromaDB's $nin does equality matching, not substring/prefix matching,
+        # so filtering folder tokens like "node_modules" against full absolute
+        # file paths would silently return zero excluded results. The exclusion
+        # is applied in Python after retrieval — see stream_answer().
+        #
+        # Fetch extra candidates (k=10) so we still get ≥5 useful results
+        # after the post-retrieval folder filter discards some documents.
+        k = 10 if (filters and filters.exclude_folders) else 5
+        return self.vectorstore.as_retriever(search_kwargs={"k": k, "filter": where})
 
     async def stream_answer(
         self,
@@ -136,27 +114,47 @@ class ChatService:
         normalized_model = (
             model if model in {"gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"} else "gpt-4o"
         )
-        normalized_filters = _ChatFilters.model_validate(filters) if filters is not None else None
-        try:
-            request = _ChatRequest(
-                query=query,
-                session_id=session_id,
-                workspace_id=workspace_id,
-                tenant_id=tenant_id,
-                model=cast(Any, normalized_model),
-                filters=normalized_filters,
-            )
-        except ValidationError as exc:
-            raise ValueError("Invalid query, session_id, workspace_id, or model.") from exc
+        normalized_filters = (
+            ChatStreamFilters.model_validate(filters) if filters is not None else None
+        )
 
-        chat_history = await self._load_memory(request.session_id)
+        logger.info(
+            "chat.stream.start session_id=%s workspace_id=%s model=%s",
+            session_id,
+            workspace_id,
+            normalized_model,
+        )
+
+        chat_history = await self._load_memory(session_id)
 
         retriever = self._build_retriever(
-            request.workspace_id,
-            request.tenant_id,
-            request.filters,
+            workspace_id,
+            tenant_id,
+            normalized_filters,
         )
-        documents = await retriever.ainvoke(request.query)
+        documents = await retriever.ainvoke(query)
+        logger.info(
+            "chat.retrieval.done session_id=%s docs_retrieved=%s",
+            session_id,
+            len(documents),
+        )
+
+        # Post-retrieval folder exclusion: check whether any exclude token appears
+        # as a substring of the full file_path. This is what ChromaDB's $nin
+        # cannot do (it only does exact equality matching).
+        if normalized_filters and normalized_filters.exclude_folders:
+            exclude_tokens = [t.strip() for t in normalized_filters.exclude_folders if t.strip()]
+            if exclude_tokens:
+                documents = [
+                    doc
+                    for doc in documents
+                    if not any(
+                        token in (doc.metadata.get("file_path") or "") for token in exclude_tokens
+                    )
+                ]
+        # Cap at 5 after filtering (we fetched up to 10 to have slack)
+        documents = documents[:5]
+
         citations = self._build_citations(documents)
         context = self._build_context(documents, citations)
 
@@ -165,9 +163,10 @@ class ChatService:
         prompt_messages = self.prompt.format_messages(
             context=context,
             chat_history=chat_history,
-            input=request.query,
+            input=query,
         )
-        llm = self._create_llm(request.model)
+        _model = cast(Literal["gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"], normalized_model)
+        llm = self._create_llm(_model)
         async for chunk in llm.astream(prompt_messages):
             token = self._chunk_to_text(chunk)
             if token:

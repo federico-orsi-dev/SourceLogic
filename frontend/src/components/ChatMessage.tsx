@@ -2,21 +2,9 @@ import React from "react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import type { ChatMessageModel } from "../types/chat";
 
-export type ChatMessageRole = "user" | "bot";
-export type CitationModel = {
-  chunk_id: number;
-  file_path?: string | null;
-  file_name?: string | null;
-  line_start?: number | null;
-  extension?: string | null;
-};
-
-export type ChatMessageModel = {
-  role: ChatMessageRole;
-  content: string;
-  sources?: CitationModel[];
-};
+export type { ChatMessageModel };
 
 type ChatMessageProps = {
   message: ChatMessageModel;
@@ -40,13 +28,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
           <ReactMarkdown
             className="prose prose-invert max-w-none"
             components={{
-              code({ inline, className, children, ...props }) {
+              // react-markdown v9 removed the `inline` prop; detect block
+              // code by the presence of a language class instead
+              code({ className, children, node: _node, ...props }) {
                 const match = /language-(\w+)/.exec(className || "");
-                return !inline ? (
+                return match ? (
                   <SyntaxHighlighter
-                    {...props}
                     style={vscDarkPlus}
-                    language={match ? match[1] : "text"}
+                    language={match[1]}
                     PreTag="div"
                     customStyle={{
                       margin: "0.75rem 0",

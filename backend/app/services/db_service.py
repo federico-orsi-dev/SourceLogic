@@ -1,44 +1,35 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from backend.app.core.database import get_db
-from backend.app.models import Message, Session, Workspace
+from app.models import Message, Session, Workspace, WorkspaceStatus
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Deprecated alias kept for backward compatibility.
-
-    Source of truth for engine/session lifecycle is backend.app.core.database.
-    """
-    async for session in get_db():
-        yield session
 
 
 class DatabaseService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def create_workspace(self, name: str, root_path: str) -> Workspace:
-        workspace = Workspace(name=name, root_path=root_path)
+    async def create_workspace(self, name: str, root_path: str, tenant_id: str) -> Workspace:
+        workspace = Workspace(name=name, root_path=root_path, tenant_id=tenant_id)
         self.session.add(workspace)
         await self.session.commit()
         await self.session.refresh(workspace)
         return workspace
 
-    async def list_workspaces(self) -> list[Workspace]:
-        result = await self.session.execute(select(Workspace))
+    async def list_workspaces(self, tenant_id: str) -> list[Workspace]:
+        result = await self.session.execute(
+            select(Workspace).where(Workspace.tenant_id == tenant_id)
+        )
         return list(result.scalars().all())
 
     async def get_workspace(self, workspace_id: int) -> Workspace | None:
         result = await self.session.execute(select(Workspace).where(Workspace.id == workspace_id))
         return result.scalar_one_or_none()
 
-    async def update_workspace_status(self, workspace_id: int, status: str) -> None:
+    async def update_workspace_status(self, workspace_id: int, status: WorkspaceStatus) -> None:
         workspace = await self.get_workspace(workspace_id)
         if not workspace:
             return
@@ -72,7 +63,7 @@ class DatabaseService:
             role=role,
             content=content,
             sources=sources,
-            timestamp=timestamp or datetime.utcnow(),
+            timestamp=timestamp or datetime.now(UTC),
         )
         self.session.add(message)
         await self.session.commit()
