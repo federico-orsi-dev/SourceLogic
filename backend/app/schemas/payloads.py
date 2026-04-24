@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -32,44 +32,42 @@ class IngestRequest(BaseModel):
         return cleaned
 
 
-class ChatRequest(BaseModel):
-    query: str
-    model: Literal["gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"] = "gpt-4o"
-    history: list[Any] | None = None
+class ChatStreamFilters(BaseModel):
+    include_extensions: list[str] | None = None
+    exclude_folders: list[str] | None = None
 
 
-class ChatResponse(BaseModel):
-    answer: str
-    sources: list[str]
-
-
-class WorkspaceCreate(BaseModel):
-    name: str
-    root_path: str = Field(..., description="Absolute path to the codebase directory.")
-
-    @field_validator("root_path")
-    @classmethod
-    def _validate_root_path(cls, value: str) -> str:
-        if not Path(value).is_absolute():
-            raise ValueError("root_path must be an absolute path.")
-        return value
-
-
-class WorkspaceResponse(BaseModel):
-    id: int
-    name: str
-    root_path: str
-    status: str
-    created_at: str
-    last_indexed_at: str | None = None
-
-
-class SessionCreate(BaseModel):
-    title: str | None = None
-
-
-class ChatStreamRequest(BaseModel):
-    query: str
+class ChatStreamPayload(BaseModel):
+    query: str = Field(..., min_length=1, max_length=4096)
     workspace_id: int
     model: Literal["gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"] = "gpt-4o"
-    filters: dict[str, list[str]] | None = None
+    filters: ChatStreamFilters | None = None
+
+
+class SessionCreateResponse(BaseModel):
+    session_id: int
+
+
+class IngestTaskResponse(BaseModel):
+    task_id: str
+    status: str
+
+
+class IngestStatusResponse(BaseModel):
+    task_id: str
+    workspace_id: int
+    status: str
+    created_at: str
+    completed_at: str | None = None
+    error: str | None = None
+    result: dict[str, int] | None = None
+
+
+class DeleteResponse(BaseModel):
+    status: str
+    workspace_id: int
+
+
+class SessionDeleteResponse(BaseModel):
+    status: str
+    session_id: int

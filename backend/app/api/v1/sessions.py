@@ -1,33 +1,23 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from collections.abc import AsyncGenerator
-from typing import Any, Literal
+from typing import Any
 
-from backend.app.api.dependencies import get_current_tenant
-from backend.app.core.database import get_db
-from backend.app.models import Message, Session, Workspace
-from backend.app.schemas.message import MessageRead
-from backend.app.services.chat_service import ChatService
-from fastapi import APIRouter, Depends, HTTPException
+from app.api.dependencies import get_current_tenant
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.limiter import limiter
+from app.models import Message, Session, Workspace
+from app.schemas.message import MessageRead
+from app.schemas.payloads import ChatStreamPayload, SessionDeleteResponse
+from app.services.chat_service import ChatService
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="", tags=["sessions"])
-
-
-class ChatStreamFilters(BaseModel):
-    include_extensions: list[str] | None = None
-    exclude_folders: list[str] | None = None
-
-
-class ChatStreamPayload(BaseModel):
-    query: str = Field(..., min_length=1)
-    workspace_id: int
-    model: Literal["gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"] = "gpt-4o"
-    filters: ChatStreamFilters | None = None
 
 
 def _sse_event(event: str, payload: dict[str, Any]) -> str:
@@ -37,9 +27,11 @@ def _sse_event(event: str, payload: dict[str, Any]) -> str:
 @router.get("/sessions/{session_id}/history", response_model=list[MessageRead])
 async def get_session_history(
     session_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-) -> list[MessageRead]:
+) -> list[Message]:
     session = await db.get(Session, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
@@ -49,13 +41,37 @@ async def get_session_history(
         raise HTTPException(status_code=404, detail="Session not found.")
 
     result = await db.execute(
-        select(Message).where(Message.session_id == session_id).order_by(Message.timestamp)
+        select(Message)
+        .where(Message.session_id == session_id)
+        .where((Message.role == "user") | (Message.is_complete == True))  # noqa: E712
+        .order_by(Message.timestamp)
+        .offset(offset)
+        .limit(limit)
     )
     return list(result.scalars().all())
 
 
+@router.delete("/sessions/{session_id}", response_model=SessionDeleteResponse)
+async def delete_session(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+) -> SessionDeleteResponse:
+    session = await db.get(Session, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    workspace = await db.get(Workspace, session.workspace_id)
+    if not workspace or workspace.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    await db.delete(session)
+    await db.commit()
+    return SessionDeleteResponse(status="deleted", session_id=session_id)
+
+
 @router.post("/chat/{session_id}/stream")
+@limiter.limit(settings.CHAT_RATE_LIMIT)
 async def stream_chat(
+    request: Request,  # noqa: ARG001
     session_id: int,
     payload: ChatStreamPayload,
     db: AsyncSession = Depends(get_db),
@@ -76,6 +92,7 @@ async def stream_chat(
     chat_service = ChatService(db_session=db)
     assistant_chunks: list[str] = []
     citations: list[dict[str, Any]] = []
+    stream_done: list[bool] = [False]
 
     async def event_stream() -> AsyncGenerator[str, None]:
         try:
@@ -102,19 +119,25 @@ async def stream_chat(
                     continue
 
                 yield _sse_event(event_type, event)
+            stream_done[0] = True
         except Exception as exc:  # noqa: BLE001
             yield _sse_event("error", {"detail": str(exc)})
         finally:
             assistant_text = "".join(assistant_chunks).strip()
             if assistant_text:
-                assistant_message = Message(
-                    session_id=session_id,
-                    role="bot",
-                    content=assistant_text,
-                    sources={"citations": citations} if citations else None,
-                )
-                db.add(assistant_message)
-                await db.commit()
+                from app.core.database import AsyncSessionLocal
+
+                async with AsyncSessionLocal() as save_session:
+                    save_session.add(
+                        Message(
+                            session_id=session_id,
+                            role="bot",
+                            content=assistant_text,
+                            sources={"citations": citations} if citations else None,
+                            is_complete=stream_done[0],
+                        )
+                    )
+                    await save_session.commit()
             yield _sse_event("done", {"status": "complete"})
 
     return StreamingResponse(

@@ -22,6 +22,17 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     DATABASE_URL: str = f"sqlite+aiosqlite:///{DATA_DIR}/codechat.db"
     CHROMA_PATH: str = str(DATA_DIR / "chroma_db")
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    LOG_LEVEL: str = "INFO"
+    CHAT_RATE_LIMIT: str = "20/minute"
+    # auth: "dev" accepts X-Tenant-ID header (local use); "api_key" requires X-API-Key from DB
+    AUTH_MODE: str = "dev"
+    # Required when AUTH_MODE=api_key or to use admin key-management endpoints
+    ADMIN_SECRET: str | None = None
+    # Optional: restrict workspace root_path to a base directory.
+    # Unset = any absolute path is allowed (safe for local single-user use).
+    # Set this in production deployments to prevent path traversal.
+    WORKSPACE_ALLOWED_BASE: str | None = None
 
 
 settings = Settings()

@@ -1,14 +1,17 @@
-from backend.app.models.models import Base, Message, Session, Workspace, WorkspaceStatus
-
-ChatSession = Session
-ChatMessage = Message
+﻿from app.models.models import (
+    Base,
+    Message,
+    Session,
+    TenantAPIKey,
+    Workspace,
+    WorkspaceStatus,
+)
 
 __all__ = [
     "Base",
     "Workspace",
     "Session",
     "Message",
+    "TenantAPIKey",
     "WorkspaceStatus",
-    "ChatSession",
-    "ChatMessage",
 ]

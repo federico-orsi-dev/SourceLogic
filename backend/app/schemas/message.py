@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
+
+
+class MessageRole(StrEnum):
+    USER = "user"
+    BOT = "bot"
 
 
 class MessageRead(BaseModel):
@@ -11,7 +17,8 @@ class MessageRead(BaseModel):
 
     id: int
     session_id: int
-    role: str
+    role: MessageRole
     content: str
     sources: dict[str, Any] | None = None
+    is_complete: bool = True
     timestamp: datetime

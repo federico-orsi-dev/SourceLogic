@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime
 
-from backend.app.models import WorkspaceStatus
+from app.models import WorkspaceStatus
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -15,6 +15,7 @@ class WorkspaceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    tenant_id: str
     name: str
     root_path: str
     status: WorkspaceStatus
