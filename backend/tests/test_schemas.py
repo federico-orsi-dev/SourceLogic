@@ -3,8 +3,7 @@
 from pathlib import Path
 
 import pytest
-from app.schemas.payloads import ChatStreamPayload
-from app.schemas.payloads import IngestRequest
+from app.schemas.payloads import ChatStreamPayload, IngestRequest
 from pydantic import ValidationError
 
 
