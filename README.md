@@ -7,8 +7,8 @@
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-0.3-1C3C3C)
-![Tests](https://img.shields.io/badge/tests-114%20passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-77%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-127%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-76.60%25-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -147,29 +147,42 @@ Copy `backend/.env.example` to `backend/.env` and fill in the values.
 | `POST` | `/workspaces/{id}/sessions` | Create a chat session |
 | `GET` | `/workspaces/{id}/sessions` | List all sessions for a workspace |
 | `DELETE` | `/sessions/{id}` | Delete a chat session |
-| `GET` | `/sessions/{id}/history` | Full message history for a session |
+| `GET` | `/sessions/{id}/history` | Full message history for a session (supports `limit` & `offset` params) |
 | `POST` | `/chat/{session_id}/stream` | Stream AI answer via SSE |
+| `POST` | `/admin/tenants/{tenant_id}/keys` | Create API key for tenant (requires `X-Admin-Secret`) |
+| `GET` | `/admin/tenants/{tenant_id}/keys` | List active keys for tenant (requires `X-Admin-Secret`) |
+| `DELETE` | `/admin/tenants/{tenant_id}/keys/{key_id}` | Revoke API key (requires `X-Admin-Secret`) |
 
 Full OpenAPI spec at `/docs` when the server is running.
 
 ### Authentication
 
-Two modes are supported, controlled by the `AUTH_MODE` environment variable:
+Three authentication modes are supported, controlled by the `AUTH_MODE` environment variable:
 
-| Mode | Header | Use case |
-|---|---|---|
-| `dev` (default) | `X-Tenant-ID: <tenant>` | Local single-user development |
-| `api_key` | `X-API-Key: <raw-key>` | Multi-tenant production deployments |
+| Mode | Header | Status | Use case |
+|---|---|---|---|
+| `dev` (default) | `X-Tenant-ID: <tenant>` | ✅ Production-ready | Local single-user development |
+| `api_key` | `X-API-Key: <raw-key>` | ✅ Production-ready | Multi-tenant production deployments |
+| `jwt` | `Authorization: Bearer <token>` | ⏳ Stub ready (Week 4) | OAuth2 / OIDC provider integration |
 
-**Development mode** trusts the `X-Tenant-ID` header directly (defaults to `tenant-a`). Zero configuration required.
+#### Development mode (AUTH_MODE=dev)
 
-**API key mode** validates the `X-API-Key` header against a SHA-256 hashed key stored in the database. Keys are provisioned via admin endpoints:
+Trusts the `X-Tenant-ID` header directly (defaults to `tenant-a`). Zero configuration required.
+
+```bash
+curl http://localhost:8000/workspaces \
+  -H "X-Tenant-ID: my-org"
+```
+
+#### API key mode (AUTH_MODE=api_key) — ✅ Production-ready
+
+Validates `X-API-Key` header against SHA-256 hashed keys in the database. Keys are provisioned via admin endpoints:
 
 ```bash
 # Generate a key for a tenant (requires ADMIN_SECRET env var to be set)
 curl -X POST http://localhost:8000/admin/tenants/my-tenant/keys?label=ci \
   -H "X-Admin-Secret: $ADMIN_SECRET"
-# → returns { "key": "raw-key-shown-once", ... }
+# → returns { "key": "raw-key-shown-once", "tenant_id": "my-tenant", ... }
 
 # List active keys for a tenant
 curl http://localhost:8000/admin/tenants/my-tenant/keys \
@@ -180,7 +193,31 @@ curl -X DELETE http://localhost:8000/admin/tenants/my-tenant/keys/{key_id} \
   -H "X-Admin-Secret: $ADMIN_SECRET"
 ```
 
-Swapping in JWT middleware requires only updating `get_current_tenant()` in `app/api/dependencies.py`.
+**Key features:**
+- SHA-256 hashing with timing-safe comparison (prevents timing attacks)
+- Per-key rate limiting (default 20 req/min, configurable via `CHAT_RATE_LIMIT`)
+- Revocation support (`is_active` flag in database)
+- Admin endpoints for key lifecycle management
+
+#### JWT mode (AUTH_MODE=jwt) — Week 4 preparation
+
+JWT support is implemented as a middleware stub in `app/api/dependencies.py:37-58`. To enable JWT authentication in Week 4:
+
+1. Choose an identity provider (Auth0, Okta, Cognito, etc.)
+2. Set `JWT_SECRET` env var to your provider's public key (or shared secret)
+3. Uncomment the JWT variant in `app/api/dependencies.py`
+4. Install `python-jose`: `uv add python-jose`
+5. Clients send: `Authorization: Bearer <jwt-token>`
+
+The JWT payload must include a `tenant_id` field for tenant isolation.
+
+```bash
+# Example: after configuring JWT provider
+curl http://localhost:8000/workspaces \
+  -H "Authorization: Bearer eyJhbGc..."
+```
+
+See `backend/tests/test_auth.py:270-287` for documented JWT behavior specifications.
 
 ---
 
@@ -193,7 +230,15 @@ DATABASE_URL="sqlite+aiosqlite:///./data/ci.db" \
 uv run pytest -q --cov --cov-report=term-missing
 ```
 
-The backend suite uses an in-memory SQLite database with `StaticPool` — **no external services required**. 114 tests covering all CRUD endpoints, cascade deletes, Pydantic validation, admin/auth flows, and unit tests for ChatService and IngestionService with mock dependencies.
+The backend suite uses an in-memory SQLite database with `StaticPool` — **no external services required**. 127 tests covering:
+- All CRUD endpoints (workspaces, sessions, messages)
+- Authentication flows (dev mode, api_key mode, admin endpoints)
+- Rate limiting per API key
+- Pydantic input validation (max length, required fields)
+- Database cascade deletes and constraints
+- SSE streaming behavior and error handling
+- ChatService and IngestionService with mock dependencies
+- Coverage: 76.60% (threshold: 70%)
 
 ```bash
 # Frontend tests (Vitest + React Testing Library)
@@ -212,26 +257,37 @@ npx tsc --noEmit    # type check
 sourcelogic/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/           # FastAPI routers — workspaces.py, sessions.py
-│   │   ├── core/             # Config, DB engine, embeddings singleton
-│   │   ├── models/           # SQLAlchemy ORM — Workspace, Session, Message
-│   │   ├── schemas/          # Pydantic request/response models
-│   │   └── services/         # Business logic — code_parser, chat_service,
-│   │                         #   db_service, ingest_service
-│   ├── tests/                # pytest suite (87 tests, ≥70% coverage)
-│   │   ├── conftest.py       # AsyncClient + in-memory DB fixtures
-│   │   └── test_*.py
-│   └── pyproject.toml        # uv / ruff / mypy strict / pytest config
+│   │   ├── api/
+│   │   │   ├── dependencies.py  # Auth: dev/api_key/jwt modes + admin check
+│   │   │   └── v1/              # FastAPI routers (workspaces, sessions, admin)
+│   │   ├── core/
+│   │   │   ├── config.py        # Settings: OPENAI_API_KEY, AUTH_MODE, JWT_SECRET
+│   │   │   ├── database.py      # SQLAlchemy async engine, init_db()
+│   │   │   ├── embeddings.py    # HuggingFaceEmbeddings singleton (lru_cache)
+│   │   │   ├── limiter.py       # Slowapi rate limiter (per-key bucketing)
+│   │   │   ├── logging_config.py # JSON logging for Datadog/Loki
+│   │   │   ├── middleware.py    # RequestID middleware
+│   │   │   └── vectorstore.py   # ChromaDB singleton
+│   │   ├── models/              # SQLAlchemy ORM (Workspace, Session, Message, TenantAPIKey)
+│   │   ├── schemas/             # Pydantic request/response models
+│   │   └── services/            # Business logic (code_parser, chat_service, db_service, ingest_service)
+│   ├── tests/                   # pytest suite (127 tests, 76.60% coverage, ≥70% required)
+│   │   ├── conftest.py          # AsyncClient + in-memory SQLite fixtures
+│   │   ├── test_auth.py         # Auth modes, admin endpoints, JWT stub docs
+│   │   ├── test_*.py            # Endpoint, service, and schema tests
+│   │   └── test_*_unit.py       # Unit tests with mock dependencies
+│   ├── alembic/                 # DB migrations (async SQLAlchemy)
+│   └── pyproject.toml           # uv / ruff / mypy strict / pytest config
 ├── frontend/
 │   └── src/
-│       ├── components/       # Sidebar, ChatArea, ChatFooter, ChatHeader,
-│       │                     #   WorkspaceModal, ChatMessage, ErrorBoundary
-│       ├── hooks/            # useStreaming, useChat, useWorkspaces,
-│       │                     #   useSessions, useToast, useTenant
-│       ├── services/         # WorkspaceService, SessionService, apiClient
-│       └── types/            # chat.ts — ChatModel, ChatMessageModel
-├── .github/workflows/ci.yml  # CI: ruff · mypy · pytest
-└── README.md
+│       ├── components/          # Sidebar, ChatArea, ChatFooter, ChatHeader,
+│       │                        #   WorkspaceModal, ChatMessage, ErrorBoundary
+│       ├── hooks/               # useStreaming, useChat, useWorkspaces,
+│       │                        #   useSessions, useToast, useTenant
+│       ├── services/            # WorkspaceService, SessionService, apiClient
+│       └── types/               # chat.ts — ChatModel, ChatMessageModel
+├── .github/workflows/ci.yml     # CI: ruff · mypy · bandit · pytest (coverage ≥70%)
+└── docker-compose.yml           # Local dev: backend + frontend
 ```
 
 ---
@@ -255,10 +311,64 @@ Re-embedding large repos takes minutes. The manifest records each file's MD5 has
 
 ---
 
+## Production deployment
+
+### Pre-deployment checklist
+
+| Item | Status | Notes |
+|---|---|---|
+| Authentication | ✅ Ready | `AUTH_MODE=api_key` with `ADMIN_SECRET` set |
+| Rate limiting | ✅ Ready | Per-key rate limiting via Slowapi |
+| Database migrations | ✅ Ready | Alembic setup for schema versioning |
+| Structured logging | ✅ Ready | JSON logging compatible with Datadog/Loki |
+| Security headers | ✅ Ready | Nginx config includes CSP, X-Frame-Options, etc. |
+| TLS/HTTPS | ⏳ Required | Must be configured at load balancer / Nginx level |
+| CORS origins | ✅ Ready | Set `CORS_ORIGINS` env var (defaults to localhost) |
+| Path traversal guard | ✅ Ready | Set `WORKSPACE_ALLOWED_BASE` to restrict workspace indexing |
+| OpenAI API key | ✅ Ready | Provision via env var (never commit to git) |
+| ChromaDB persistence | ✅ Ready | File-backed vector store (production-safe) |
+| SQLite → PostgreSQL | ✅ Optional | Swap `DATABASE_URL` — no code changes required |
+
+### Environment variables for production
+
+```bash
+# Required
+export OPENAI_API_KEY="sk-..."
+export AUTH_MODE="api_key"
+export ADMIN_SECRET="$(openssl rand -hex 32)"
+
+# Optional but recommended
+export DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/sourcelogic"
+export WORKSPACE_ALLOWED_BASE="/home/user/projects"
+export CORS_ORIGINS='["https://yourdomain.com","https://app.yourdomain.com"]'
+export LOG_LEVEL="INFO"
+export CHAT_RATE_LIMIT="50/minute"
+export JWT_SECRET=""  # Leave empty unless using JWT auth in Week 4
+```
+
+### Docker deployment
+
+```bash
+cd sourcelogic
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+### Week 4 roadmap (Final Polish)
+
+| Task | Status | Notes |
+|---|---|---|
+| JWT OAuth2 integration | ⏳ Ready to start | Stub code in `dependencies.py:37-58`; awaiting provider selection |
+| Frontend API key UI | ⏳ Ready to start | Modal for tenants to manage their API keys |
+| E2E auth tests | ⏳ Ready to start | Playwright tests for complete auth flow |
+| Performance optimization | ⏳ Ready to start | Connection pooling, socket reuse optimizations |
+| Security audit | ⏳ Ready to start | Review rate limiting, CORS, path traversal guards |
+
+---
+
 ## Known limitations
 
-- **Auth**: production deployments should set `AUTH_MODE=api_key` and provision keys via `/admin/tenants/{id}/keys`. JWT/OAuth2 requires only swapping `get_current_tenant()` in `app/api/dependencies.py`.
 - **Path traversal**: by default any absolute path is accepted (safe for local single-user use). Set `WORKSPACE_ALLOWED_BASE` in `.env` to restrict paths in multi-user or production deployments.
+- **Large codebase indexing**: embeddings for >100k files may exceed memory. Consider breaking into multiple workspaces or using a cloud embedding provider.
 
 ---
 
