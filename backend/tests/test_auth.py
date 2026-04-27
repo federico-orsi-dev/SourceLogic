@@ -262,3 +262,26 @@ async def test_chat_query_whitespace_only_returns_422(auth_client: AsyncClient) 
         headers={"X-Tenant-ID": "t1"},
     )
     assert resp.status_code == 422
+
+
+# ── JWT stub documentation ─────────────────────────────────────────────────────────
+
+
+async def test_jwt_stub_behavior_documented() -> None:
+    """
+    JWT stub test — documents expected behavior when JWT_SECRET is configured.
+
+    When Auth Foundation (M6) is deployed with JWT_SECRET set:
+    - Authorization header should be "Bearer <token>"
+    - Token is decoded with settings.JWT_SECRET using HS256
+    - Payload must contain "tenant_id" field
+    - Failure to provide Bearer header → 401 "Bearer token required"
+    - Invalid token (bad signature, expired, missing tenant_id) → 401 "Invalid token"
+    - Valid token with correct tenant_id → 200 (successful auth)
+
+    Implementation location: dependencies.py:37-58 (JWT variant stub code)
+    Status: DOCUMENTATION ONLY — JWT not wired to FastAPI yet
+    When to wire: Week 4, after production identity provider is chosen
+    Library required: python-jose (uv add python-jose)
+    """
+    pass  # This test documents behavior; actual implementation in dependencies.py stub
