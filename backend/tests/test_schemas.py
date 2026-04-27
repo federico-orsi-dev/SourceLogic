@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
+
 from app.schemas.payloads import ChatStreamPayload
 from app.schemas.payloads import IngestRequest
-from pydantic import ValidationError
 
 
 def test_ingest_request_accepts_absolute_path(tmp_path: Path) -> None:
