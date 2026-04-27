@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     AUTH_MODE: str = "dev"
     # Required when AUTH_MODE=api_key or to use admin key-management endpoints
     ADMIN_SECRET: str | None = None
+    # Optional: JWT secret for production auth provider integration.
+    # If set, enables Bearer token authentication (requires JWT_SECRET from env var).
+    # See dependencies.py for JWT variant of get_current_tenant().
+    JWT_SECRET: str | None = None
     # Optional: restrict workspace root_path to a base directory.
     # Unset = any absolute path is allowed (safe for local single-user use).
     # Set this in production deployments to prevent path traversal.

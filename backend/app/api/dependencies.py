@@ -31,3 +31,36 @@ async def get_current_tenant(
 
     # dev mode: trust X-Tenant-ID header (safe for local single-user use)
     return x_tenant_id
+
+
+# JWT Variant (stub for production integration)
+# =======================================================================================
+# To enable Bearer token authentication in production, replace get_current_tenant() with:
+#
+# from jose import JWTError, jwt
+#
+# async def get_current_tenant(
+#     authorization: str | None = Header(default=None),
+#     db: AsyncSession = Depends(get_db),
+# ) -> str:
+#     if settings.AUTH_MODE == "jwt":
+#         if not authorization or not authorization.startswith("Bearer "):
+#             raise HTTPException(status_code=401, detail="Bearer token required.")
+#         token = authorization.split(" ", 1)[1]
+#         try:
+#             payload = jwt.decode(token, settings.JWT_SECRET, algorithms=["HS256"])
+#             tenant_id: str = payload.get("tenant_id", "")
+#             if not tenant_id:
+#                 raise HTTPException(status_code=401, detail="Invalid token payload.")
+#             return tenant_id
+#         except JWTError as exc:
+#             raise HTTPException(status_code=401, detail="Invalid token.") from exc
+#
+#     if settings.AUTH_MODE == "api_key":
+#         # ... existing api_key logic ...
+#
+#     return x_tenant_id  # dev mode
+#
+# Requires: uv add python-jose
+# Config: JWT_SECRET = "your-secret-key" in .env
+# =======================================================================================
