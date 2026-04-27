@@ -1,4 +1,4 @@
-﻿"""Tests for admin API key management and AUTH_MODE=api_key dependency."""
+"""Tests for admin API key management and AUTH_MODE=api_key dependency."""
 
 from __future__ import annotations
 

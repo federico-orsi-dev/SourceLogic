@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from app.models import Message, Session, Workspace, WorkspaceStatus
 from sqlalchemy import select

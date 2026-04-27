@@ -1,4 +1,4 @@
-﻿"""Unit tests for ChatService using injected doubles — no OpenAI or ChromaDB required."""
+"""Unit tests for ChatService using injected doubles — no OpenAI or ChromaDB required."""
 
 from __future__ import annotations
 

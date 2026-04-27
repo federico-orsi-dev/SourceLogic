@@ -1,4 +1,4 @@
-﻿"""Unit tests for IngestionService with mocked CodeParser and Chroma."""
+"""Unit tests for IngestionService with mocked CodeParser and Chroma."""
 
 from __future__ import annotations
 
