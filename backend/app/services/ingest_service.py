@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.embeddings import get_embeddings
 from app.models import Workspace, WorkspaceStatus
 from app.services.code_parser import CodeParser, SourceCodeSplitter
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from pydantic import BaseModel, DirectoryPath, ValidationError
 

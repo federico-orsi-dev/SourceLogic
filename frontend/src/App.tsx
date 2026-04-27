@@ -36,6 +36,7 @@ const App: React.FC = () => {
   const {
     activeSessionId,
     activeSessions,
+    isLoadingSessions,
     setActiveSessionId,
     handleNewSession,
     handleDeleteSession,
@@ -94,6 +95,7 @@ const App: React.FC = () => {
           activeSessionId={activeSessionId}
           isIndexing={isIndexing}
           isLoadingWorkspaces={isLoadingWorkspaces}
+          isLoadingSessions={isLoadingSessions}
           onSelectWorkspace={setActiveWorkspaceId}
           onDeleteWorkspace={handleDeleteWorkspace}
           onDeleteSession={handleDeleteSessionAndClear}

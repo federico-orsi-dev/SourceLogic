@@ -71,6 +71,20 @@ describe("useSessions.handleDeleteSession", () => {
   });
 });
 
+describe("useSessions.isLoadingSessions", () => {
+  it("is false after sessions finish loading", async () => {
+    vi.mocked(SessionService.list).mockResolvedValue([]);
+
+    const { result } = renderHook(() =>
+      useSessions({ activeWorkspaceId: 1, showToast })
+    );
+
+    await act(async () => {});
+
+    expect(result.current.isLoadingSessions).toBe(false);
+  });
+});
+
 describe("useSessions.handleWorkspaceDeleted", () => {
   it("removes sessions belonging to the deleted workspace", async () => {
     vi.mocked(SessionService.list).mockResolvedValue([

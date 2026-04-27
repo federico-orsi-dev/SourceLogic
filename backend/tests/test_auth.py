@@ -244,7 +244,9 @@ async def test_workspace_name_empty_returns_422(auth_client: AsyncClient, tmp_pa
     assert resp.status_code == 422
 
 
-async def test_workspace_name_too_long_returns_422(auth_client: AsyncClient, tmp_path: Path) -> None:
+async def test_workspace_name_too_long_returns_422(
+    auth_client: AsyncClient, tmp_path: Path
+) -> None:
     resp = await auth_client.post(
         "/workspaces",
         json={"name": "x" * 201, "root_path": str(tmp_path)},

@@ -11,6 +11,7 @@ type SidebarProps = {
   activeSessionId: number | null;
   isIndexing: boolean;
   isLoadingWorkspaces: boolean;
+  isLoadingSessions: boolean;
   onSelectWorkspace: (id: number) => void;
   onDeleteWorkspace: (id: number) => Promise<void>;
   onDeleteSession: (id: number) => Promise<void>;
@@ -27,6 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeSessionId,
   isIndexing,
   isLoadingWorkspaces,
+  isLoadingSessions,
   onSelectWorkspace,
   onDeleteWorkspace,
   onDeleteSession,
@@ -154,7 +156,17 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="mt-3 flex-1 space-y-2 overflow-y-auto pr-1">
-        {activeSessions.length === 0 ? (
+        {isLoadingSessions && activeSessions.length === 0 && (
+          <>
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-12 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/50"
+              />
+            ))}
+          </>
+        )}
+        {!isLoadingSessions && activeSessions.length === 0 ? (
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-xs text-zinc-500">
             Create a session to begin chatting.
           </div>

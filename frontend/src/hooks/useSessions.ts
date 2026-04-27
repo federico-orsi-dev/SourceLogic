@@ -10,6 +10,7 @@ type UseSessionsParams = {
 export const useSessions = ({ activeWorkspaceId, showToast }: UseSessionsParams) => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
 
   const activeSessions = useMemo(
     () => sessions.filter((s) => s.workspaceId === activeWorkspaceId),
@@ -22,6 +23,7 @@ export const useSessions = ({ activeWorkspaceId, showToast }: UseSessionsParams)
   useEffect(() => {
     if (!activeWorkspaceId) return;
     const load = async () => {
+      setIsLoadingSessions(true);
       try {
         const fetched = await SessionService.list(activeWorkspaceId);
         setSessions((prev) => [
@@ -32,6 +34,8 @@ export const useSessions = ({ activeWorkspaceId, showToast }: UseSessionsParams)
         setActiveSessionId(fetched[0]?.id ?? null);
       } catch (e) {
         showToast?.(e instanceof Error ? e.message : "Failed to load sessions.");
+      } finally {
+        setIsLoadingSessions(false);
       }
     };
     void load();
@@ -87,6 +91,7 @@ export const useSessions = ({ activeWorkspaceId, showToast }: UseSessionsParams)
     sessions,
     activeSessionId,
     activeSessions,
+    isLoadingSessions,
     setActiveSessionId,
     handleNewSession,
     handleDeleteSession,
