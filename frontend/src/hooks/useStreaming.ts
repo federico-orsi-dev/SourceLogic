@@ -22,6 +22,7 @@ type StreamParams<T> = {
   url: string;
   body: T;
   tenantId: string;
+  apiKey?: string;
   onToken: (token: string) => void;
   onCitations?: (citations: Citation[]) => void;
   onDone?: () => void;
@@ -133,7 +134,7 @@ export const useStreaming = <T,>(): UseStreamingResult<T> => {
   );
 
   const stream = useCallback(
-    async ({ url, body, tenantId, onToken, onCitations, onDone }: StreamParams<T>) => {
+    async ({ url, body, tenantId, apiKey, onToken, onCitations, onDone }: StreamParams<T>) => {
       if (isStreaming) return;
       setError(null);
       cancelledRef.current = false;
@@ -144,7 +145,11 @@ export const useStreaming = <T,>(): UseStreamingResult<T> => {
       try {
         const response = await fetch(resolveApiUrl(url), {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Tenant-ID": tenantId },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Tenant-ID": tenantId,
+            ...(apiKey ? { "X-API-Key": apiKey } : {}),
+          },
           body: JSON.stringify(body),
           signal: controller.signal,
         });

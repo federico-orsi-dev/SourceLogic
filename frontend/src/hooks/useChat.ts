@@ -15,6 +15,7 @@ type UseChatParams = {
   activeSessionId: number | null;
   activeWorkspaceId: number | null;
   tenant: string;
+  apiKey?: string;
   showToast: (msg: string) => void;
 };
 
@@ -37,6 +38,7 @@ export const useChat = ({
   activeSessionId,
   activeWorkspaceId,
   tenant,
+  apiKey,
   showToast,
 }: UseChatParams) => {
   const [messages, setMessages] = useState<ChatMessageModel[]>([]);
@@ -109,6 +111,7 @@ export const useChat = ({
           : undefined,
       },
       tenantId: tenant,
+      apiKey,
       onToken: (token) => {
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -143,6 +146,7 @@ export const useChat = ({
     includeFilter,
     excludeFilter,
     tenant,
+    apiKey,
     stream,
   ]);
 

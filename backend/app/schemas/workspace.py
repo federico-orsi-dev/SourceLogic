@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkspaceCreate(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=200)
     root_path: str = Field(..., description="Absolute path to the codebase directory.")
 
 

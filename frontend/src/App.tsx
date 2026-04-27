@@ -15,7 +15,7 @@ import WorkspaceModal from "./components/WorkspaceModal";
 
 const App: React.FC = () => {
   const { toast, showToast } = useToast();
-  const { tenant, setTenant } = useTenant();
+  const { tenant, setTenant, apiKey, setApiKey } = useTenant();
 
   // Stable ref used to break the circular dep between useWorkspaces ↔ useSessions
   const onWorkspaceDeletedRef = useRef<(id: number) => void>(() => {});
@@ -47,7 +47,7 @@ const App: React.FC = () => {
     onWorkspaceDeletedRef.current = handleWorkspaceDeleted;
   }, [handleWorkspaceDeleted]);
 
-  const chat = useChat({ activeSessionId, activeWorkspaceId, tenant, showToast });
+  const chat = useChat({ activeSessionId, activeWorkspaceId, tenant, apiKey, showToast });
 
   const handleSessionSelect = useCallback(
     (id: number) => {
@@ -73,6 +73,13 @@ const App: React.FC = () => {
       chat.clearMessages();
     },
     [setTenant, setActiveSessionId, chat]
+  );
+
+  const handleApiKeyChange = useCallback(
+    (key: string) => {
+      setApiKey(key);
+    },
+    [setApiKey]
   );
 
   const [showModal, setShowModal] = useState(false);
@@ -101,7 +108,9 @@ const App: React.FC = () => {
             workspaceName={activeWorkspace?.name}
             sessionTitle={activeSessions.find((s) => s.id === activeSessionId)?.title}
             tenant={tenant}
+            apiKey={apiKey}
             onTenantChange={handleTenantChange}
+            onApiKeyChange={handleApiKeyChange}
             showFilters={chat.showFilters}
             onToggleFilters={() => chat.setShowFilters((p) => !p)}
             includeFilter={chat.includeFilter}

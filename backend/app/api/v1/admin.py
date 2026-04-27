@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+from hmac import compare_digest
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -33,7 +34,7 @@ def _require_admin(
 ) -> None:
     if not settings.ADMIN_SECRET:
         raise HTTPException(status_code=503, detail="Admin endpoints are not configured.")
-    if x_admin_secret != settings.ADMIN_SECRET:
+    if not x_admin_secret or not compare_digest(x_admin_secret, settings.ADMIN_SECRET):
         raise HTTPException(status_code=401, detail="Invalid admin secret.")
 
 

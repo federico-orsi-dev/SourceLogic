@@ -1,12 +1,14 @@
-import React from "react";
+import React, { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Search } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Search } from "lucide-react";
 
 type ChatHeaderProps = {
   workspaceName: string | undefined;
   sessionTitle: string | undefined;
   tenant: string;
+  apiKey: string;
   onTenantChange: (t: string) => void;
+  onApiKeyChange: (k: string) => void;
   showFilters: boolean;
   onToggleFilters: () => void;
   includeFilter: string;
@@ -19,26 +21,54 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
   workspaceName,
   sessionTitle,
   tenant,
+  apiKey,
   onTenantChange,
+  onApiKeyChange,
   showFilters,
   onToggleFilters,
   includeFilter,
   excludeFilter,
   onIncludeChange,
   onExcludeChange,
-}) => (
+}) => {
+  const [showKey, setShowKey] = useState(false);
+
+  return (
   <header className="border-b border-zinc-800 bg-zinc-950/60 px-8 py-6 backdrop-blur">
     <div className="flex items-center justify-between">
       <div>
-        <div className="flex items-center gap-3 text-xs uppercase tracking-[0.4em] text-zinc-500">
+        <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.4em] text-zinc-500">
           <span>Chat Console</span>
           <input
             value={tenant}
             onChange={(e) => onTenantChange(e.target.value)}
             placeholder="tenant-id"
             aria-label="Tenant ID"
-            className="ml-4 w-36 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs normal-case text-zinc-300 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+            className="w-32 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs normal-case text-zinc-300 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
           />
+          <span className="flex items-center gap-1 text-zinc-600">
+            <KeyRound className="h-3 w-3" />
+            API Key
+          </span>
+          <div className="relative flex items-center">
+            <input
+              value={apiKey}
+              onChange={(e) => onApiKeyChange(e.target.value)}
+              type={showKey ? "text" : "password"}
+              placeholder="sk-…"
+              aria-label="API Key"
+              autoComplete="off"
+              className="w-40 rounded-md border border-zinc-700 bg-zinc-900 py-1 pl-2 pr-7 text-xs normal-case text-zinc-300 placeholder:text-zinc-600 outline-none focus:border-zinc-500"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((v) => !v)}
+              aria-label={showKey ? "Hide API key" : "Show API key"}
+              className="absolute right-1.5 text-zinc-500 hover:text-zinc-300"
+            >
+              {showKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            </button>
+          </div>
         </div>
         <h1 className="mt-2 text-2xl font-semibold text-zinc-100">
           {workspaceName ?? "SourceLogic"}
@@ -98,6 +128,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
       )}
     </AnimatePresence>
   </header>
-);
+  );
+};
 
 export default ChatHeader;

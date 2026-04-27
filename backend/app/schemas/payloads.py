@@ -43,6 +43,14 @@ class ChatStreamPayload(BaseModel):
     model: Literal["gpt-3.5-turbo", "gpt-4o", "gpt-4-turbo"] = "gpt-4o"
     filters: ChatStreamFilters | None = None
 
+    @field_validator("query")
+    @classmethod
+    def _strip_query(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("query must not be empty or whitespace only")
+        return stripped
+
 
 class SessionCreateResponse(BaseModel):
     session_id: int
