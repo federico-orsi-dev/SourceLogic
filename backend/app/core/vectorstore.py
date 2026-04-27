@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from app.core.config import settings
 from app.core.embeddings import get_embeddings
-from langchain_chroma import Chroma
+from langchain_community.vectorstores import Chroma
 
 
 @lru_cache(maxsize=1)

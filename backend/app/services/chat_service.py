@@ -9,9 +9,9 @@ from app.core.vectorstore import get_vectorstore
 from app.models import Message
 from app.schemas.payloads import ChatStreamFilters
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from pydantic import SecretStr
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
-from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
