@@ -1,0 +1,67 @@
+# Claude Rules — SourceLogic SaaS
+# Senior Software Architect standards. Non negoziabili.
+
+## REGOLA 1 — Multi-Agente (Subagents)
+
+Per ogni task che soddisfa ALMENO UNO di questi criteri:
+- tocca più di 3 file simultaneamente
+- coinvolge logica di database (modelli ORM, migrazioni, query)
+- richiede refactoring strutturale
+
+→ Attivare automaticamente **3 sotto-agenti in parallelo**:
+  - **Agente 1 — Modelli Pydantic**: schemi di input/output, validatori, contratti API
+  - **Agente 2 — Business Logic**: services/, pipeline RAG, logica di ingestion/chat
+  - **Agente 3 — Test Unitari**: pytest, fixture, coverage ≥70% sui moduli modificati
+
+Sintassi: usare `Agent` tool con `run_in_background: true` per i 3 agenti paralleli.
+Aggregare i risultati nel thread principale prima di scrivere codice.
+
+## REGOLA 2 — Prezzi Cloud 2026
+
+Ogni volta che il task suggerisce o valuta:
+- servizi AWS (EC2, RDS, Lambda, S3, Bedrock)
+- servizi Azure (App Service, Cosmos DB, OpenAI Azure)
+- API di terze parti (OpenAI, Anthropic, Cohere, Pinecone, Weaviate)
+
+→ **Eseguire WebSearch** per verificare i prezzi correnti.
+→ I dati di training sono statici e potenzialmente obsoleti di 12-18 mesi.
+→ I costi cloud sono fortemente inflazionati rispetto ai dati pre-2025.
+→ Non citare mai un prezzo senza averlo verificato online in questa sessione.
+
+## REGOLA 3 — Qualità Python (SOLID + Type Safety)
+
+Ogni riga di codice Python prodotta deve rispettare:
+
+**SOLID:**
+- S — Single Responsibility: ogni classe/funzione fa una cosa sola
+- O — Open/Closed: estendere via composizione, non modificare codice esistente
+- L — Liskov: i sotto-tipi rispettano i contratti dei tipi base
+- I — Interface Segregation: interfacce piccole e specifiche (Protocol > ABC quando possibile)
+- D — Dependency Inversion: dipendere da astrazioni, non da implementazioni
+
+**Type Hints:**
+- Obbligatori su OGNI funzione, metodo, parametro, e return type
+- Nessun `Any` senza commento `# type: ignore[...]` giustificato
+- MyPy `strict=true` deve passare senza errori
+
+**Linting:**
+- Ruff è il linter e formatter di riferimento (100-char lines, double quotes, lf)
+- `uv run ruff check . && uv run ruff format --check .` deve essere verde
+
+**Correttezza:**
+- Se la soluzione proposta dall'utente è inefficiente o errata → correggerla con spiegazione profonda
+- Preferire chiarezza strutturale alla brevità
+- Niente soluzioni "funziona ma è sbagliato"
+
+## REGOLA 4 — Plan First
+
+Per ogni task che implica nuove feature, refactoring strutturale, o cambi di schema DB:
+→ Creare `plan.md` con le sezioni standard prima di scrivere una riga di codice
+→ Non procedere senza approvazione esplicita del piano
+
+## REGOLA 5 — Conciseness
+
+- Risposte tecniche, profonde, senza introduzioni decorative
+- File:riga per ogni riferimento al codice
+- Tabelle per confronti, liste per sequenze
+- Niente filler: "ottima domanda", "certamente", "come richiesto" sono vietati

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environment (100s of MB — never send to Docker daemon)
+.venv/
+
+# Local data (mounted as volume in production)
+data/
+
+# Dev / test config
+.env
+.env.*
+!.env.example
+
+# Alembic generated DB (tests)
+*.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
