@@ -4,6 +4,7 @@ import hashlib
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
+import pytest
 import pytest_asyncio
 from app.api.v1.workspaces import ingestion_tasks
 from app.core.config import settings
@@ -264,24 +265,115 @@ async def test_chat_query_whitespace_only_returns_422(auth_client: AsyncClient) 
     assert resp.status_code == 422
 
 
-# ── JWT stub documentation ─────────────────────────────────────────────────────────
+# ── JWT mode (AUTH_MODE=jwt) ─────────────────────────────────────────────────
 
 
-async def test_jwt_stub_behavior_documented() -> None:
-    """
-    JWT stub test — documents expected behavior when JWT_SECRET is configured.
+async def test_jwt_mode_no_token_returns_401(auth_client: AsyncClient) -> None:
+    """In jwt mode, missing Authorization header is rejected."""
+    original = settings.AUTH_MODE
+    original_secret = settings.JWT_SECRET
+    settings.AUTH_MODE = "jwt"
+    settings.JWT_SECRET = "test-secret-key-min-32-chars-long"
 
-    When Auth Foundation (M6) is deployed with JWT_SECRET set:
-    - Authorization header should be "Bearer <token>"
-    - Token is decoded with settings.JWT_SECRET using HS256
-    - Payload must contain "tenant_id" field
-    - Failure to provide Bearer header → 401 "Bearer token required"
-    - Invalid token (bad signature, expired, missing tenant_id) → 401 "Invalid token"
-    - Valid token with correct tenant_id → 200 (successful auth)
+    try:
+        resp = await auth_client.get("/workspaces")
+        assert resp.status_code == 401
+        assert "Bearer token required" in resp.json()["detail"]
+    finally:
+        settings.AUTH_MODE = original
+        settings.JWT_SECRET = original_secret
 
-    Implementation location: dependencies.py:37-58 (JWT variant stub code)
-    Status: DOCUMENTATION ONLY — JWT not wired to FastAPI yet
-    When to wire: Week 4, after production identity provider is chosen
-    Library required: python-jose (uv add python-jose)
-    """
-    pass  # This test documents behavior; actual implementation in dependencies.py stub
+
+async def test_jwt_mode_invalid_token_returns_401(auth_client: AsyncClient) -> None:
+    """In jwt mode, invalid token (bad signature) is rejected."""
+    original = settings.AUTH_MODE
+    original_secret = settings.JWT_SECRET
+    settings.AUTH_MODE = "jwt"
+    settings.JWT_SECRET = "test-secret-key-min-32-chars-long"
+
+    try:
+        resp = await auth_client.get(
+            "/workspaces",
+            headers={
+                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid.signature"
+            },
+        )
+        assert resp.status_code == 401
+        assert "Invalid token" in resp.json()["detail"]
+    finally:
+        settings.AUTH_MODE = original
+        settings.JWT_SECRET = original_secret
+
+
+async def test_jwt_mode_missing_tenant_id_returns_401(auth_client: AsyncClient) -> None:
+    """In jwt mode, token without tenant_id field is rejected."""
+    try:
+        from jose import jwt
+    except ImportError:
+        pytest.skip("python-jose not installed")
+
+    original = settings.AUTH_MODE
+    original_secret = settings.JWT_SECRET
+    settings.AUTH_MODE = "jwt"
+    settings.JWT_SECRET = "test-secret-key-min-32-chars-long"
+
+    try:
+        # Token without tenant_id
+        token = jwt.encode({"sub": "user"}, settings.JWT_SECRET, algorithm="HS256")
+        resp = await auth_client.get(
+            "/workspaces",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 401
+        assert "Invalid token payload" in resp.json()["detail"]
+    finally:
+        settings.AUTH_MODE = original
+        settings.JWT_SECRET = original_secret
+
+
+async def test_jwt_mode_valid_token_returns_200(auth_client: AsyncClient) -> None:
+    """In jwt mode, valid token with tenant_id returns 200."""
+    try:
+        from jose import jwt
+    except ImportError:
+        pytest.skip("python-jose not installed")
+
+    original = settings.AUTH_MODE
+    original_secret = settings.JWT_SECRET
+    settings.AUTH_MODE = "jwt"
+    settings.JWT_SECRET = "test-secret-key-min-32-chars-long"
+
+    try:
+        # Valid token with tenant_id
+        token = jwt.encode(
+            {"tenant_id": "jwt-test-tenant"},
+            settings.JWT_SECRET,
+            algorithm="HS256",
+        )
+        resp = await auth_client.get(
+            "/workspaces",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+    finally:
+        settings.AUTH_MODE = original
+        settings.JWT_SECRET = original_secret
+
+
+async def test_jwt_mode_no_secret_returns_503(auth_client: AsyncClient) -> None:
+    """When JWT_SECRET is not configured, jwt mode returns 503."""
+    original = settings.AUTH_MODE
+    original_secret = settings.JWT_SECRET
+    settings.AUTH_MODE = "jwt"
+    settings.JWT_SECRET = None
+
+    try:
+        resp = await auth_client.get(
+            "/workspaces",
+            headers={"Authorization": "Bearer anytoken"},
+        )
+        assert resp.status_code == 503
+        assert "JWT_SECRET not configured" in resp.json()["detail"]
+    finally:
+        settings.AUTH_MODE = original
+        settings.JWT_SECRET = original_secret
