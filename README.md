@@ -7,8 +7,8 @@
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-0.3-1C3C3C)
-![Tests](https://img.shields.io/badge/tests-127%20passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-76.60%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-78%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-77%25-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
@@ -163,7 +163,7 @@ Three authentication modes are supported, controlled by the `AUTH_MODE` environm
 |---|---|---|---|
 | `dev` (default) | `X-Tenant-ID: <tenant>` | ✅ Production-ready | Local single-user development |
 | `api_key` | `X-API-Key: <raw-key>` | ✅ Production-ready | Multi-tenant production deployments |
-| `jwt` | `Authorization: Bearer <token>` | ⏳ Stub ready (Week 4) | OAuth2 / OIDC provider integration |
+| `jwt` | `Authorization: Bearer <token>` | ✅ Production-ready | OAuth2 / OIDC provider integration |
 
 #### Development mode (AUTH_MODE=dev)
 
@@ -199,25 +199,29 @@ curl -X DELETE http://localhost:8000/admin/tenants/my-tenant/keys/{key_id} \
 - Revocation support (`is_active` flag in database)
 - Admin endpoints for key lifecycle management
 
-#### JWT mode (AUTH_MODE=jwt) — Week 4 preparation
+#### JWT mode (AUTH_MODE=jwt) — ✅ Production-ready
 
-JWT support is implemented as a middleware stub in `app/api/dependencies.py:37-58`. To enable JWT authentication in Week 4:
+JWT authentication is fully implemented in `app/api/dependencies.py`. To enable:
 
-1. Choose an identity provider (Auth0, Okta, Cognito, etc.)
-2. Set `JWT_SECRET` env var to your provider's public key (or shared secret)
-3. Uncomment the JWT variant in `app/api/dependencies.py`
-4. Install `python-jose`: `uv add python-jose`
-5. Clients send: `Authorization: Bearer <jwt-token>`
+1. Set `AUTH_MODE=jwt` in `.env`
+2. Set `JWT_SECRET` to your provider's shared secret or symmetric key
+3. Clients send: `Authorization: Bearer <jwt-token>`
 
-The JWT payload must include a `tenant_id` field for tenant isolation.
+The JWT payload must include a `tenant_id` field for tenant isolation. Algorithm: HS256.
 
 ```bash
-# Example: after configuring JWT provider
+# Example
 curl http://localhost:8000/workspaces \
   -H "Authorization: Bearer eyJhbGc..."
 ```
 
-See `backend/tests/test_auth.py:270-287` for documented JWT behavior specifications.
+```bash
+# Required env vars
+export AUTH_MODE="jwt"
+export JWT_SECRET="your-secret-key"
+```
+
+See `backend/tests/test_auth.py` for JWT behavior test coverage.
 
 ---
 
@@ -230,15 +234,15 @@ DATABASE_URL="sqlite+aiosqlite:///./data/ci.db" \
 uv run pytest -q --cov --cov-report=term-missing
 ```
 
-The backend suite uses an in-memory SQLite database with `StaticPool` — **no external services required**. 127 tests covering:
+The backend suite uses an in-memory SQLite database with `StaticPool` — **no external services required**. 78 tests covering:
 - All CRUD endpoints (workspaces, sessions, messages)
-- Authentication flows (dev mode, api_key mode, admin endpoints)
+- Authentication flows (dev mode, api_key mode, JWT, admin endpoints)
 - Rate limiting per API key
 - Pydantic input validation (max length, required fields)
 - Database cascade deletes and constraints
 - SSE streaming behavior and error handling
 - ChatService and IngestionService with mock dependencies
-- Coverage: 76.60% (threshold: 70%)
+- Coverage: 77% (threshold: 70%)
 
 ```bash
 # Frontend tests (Vitest + React Testing Library)
@@ -271,9 +275,10 @@ sourcelogic/
 │   │   ├── models/              # SQLAlchemy ORM (Workspace, Session, Message, TenantAPIKey)
 │   │   ├── schemas/             # Pydantic request/response models
 │   │   └── services/            # Business logic (code_parser, chat_service, db_service, ingest_service)
-│   ├── tests/                   # pytest suite (127 tests, 76.60% coverage, ≥70% required)
+│   ├── tests/                   # pytest suite (78 tests, 77% coverage, ≥70% required)
 │   │   ├── conftest.py          # AsyncClient + in-memory SQLite fixtures
-│   │   ├── test_auth.py         # Auth modes, admin endpoints, JWT stub docs
+│   │   ├── test_auth.py         # Auth modes: dev, api_key, JWT
+│   │   ├── test_admin.py        # Admin endpoints: API key lifecycle
 │   │   ├── test_*.py            # Endpoint, service, and schema tests
 │   │   └── test_*_unit.py       # Unit tests with mock dependencies
 │   ├── alembic/                 # DB migrations (async SQLAlchemy)
@@ -343,7 +348,7 @@ export WORKSPACE_ALLOWED_BASE="/home/user/projects"
 export CORS_ORIGINS='["https://yourdomain.com","https://app.yourdomain.com"]'
 export LOG_LEVEL="INFO"
 export CHAT_RATE_LIMIT="50/minute"
-export JWT_SECRET=""  # Leave empty unless using JWT auth in Week 4
+export JWT_SECRET=""  # Set to enable JWT Bearer token authentication (AUTH_MODE=jwt)
 ```
 
 ### Docker deployment
@@ -353,15 +358,18 @@ cd sourcelogic
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-### Week 4 roadmap (Final Polish)
+### Next milestones
 
 | Task | Status | Notes |
 |---|---|---|
-| JWT OAuth2 integration | ⏳ Ready to start | Stub code in `dependencies.py:37-58`; awaiting provider selection |
-| Frontend API key UI | ⏳ Ready to start | Modal for tenants to manage their API keys |
-| E2E auth tests | ⏳ Ready to start | Playwright tests for complete auth flow |
-| Performance optimization | ⏳ Ready to start | Connection pooling, socket reuse optimizations |
-| Security audit | ⏳ Ready to start | Review rate limiting, CORS, path traversal guards |
+| JWT Bearer token auth | ✅ Implemented | `AUTH_MODE=jwt` + `JWT_SECRET` — HS256, `tenant_id` claim |
+| API key management | ✅ Implemented | Admin endpoints + SHA-256 hashing + rate limiting per key |
+| Structured logging | ✅ Implemented | JSON logging (Datadog/Loki compatible) |
+| Rate limiting | ✅ Implemented | Slowapi, per-key bucket, configurable via `CHAT_RATE_LIMIT` |
+| Frontend API key UI | ⏳ Planned | Modal for tenants to manage their own API keys |
+| OAuth2 / OIDC provider | ⏳ Planned | Integration with Auth0 / Clerk (swap JWT_SECRET for public key) |
+| Hybrid search (BM25 + vector) | ⏳ Planned | Better precision on exact identifiers |
+| LangSmith / Langfuse tracing | ⏳ Planned | LLM cost and latency observability |
 
 ---
 
