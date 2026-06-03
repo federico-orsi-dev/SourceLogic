@@ -359,9 +359,21 @@ export JWT_SECRET=""  # Set to enable JWT Bearer token authentication (AUTH_MODE
 ### Docker deployment
 
 ```bash
-cd sourcelogic
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Clone and configure
+git clone https://github.com/federico-orsi-dev/SourceLogic.git
+cd SourceLogic
+cp backend/.env.example backend/.env
+# Set OPENAI_API_KEY (and optionally AUTH_MODE, ADMIN_SECRET) in backend/.env
+
+# Build and start — migrations run automatically on first boot
+docker compose up -d
+
+# Check logs
+docker compose logs -f backend
 ```
+
+The frontend is served by nginx on port `5173` and proxies API calls to the backend at `/api/`.
+No manual migration step required — `alembic upgrade head` runs automatically on container start.
 
 ### Next milestones
 
