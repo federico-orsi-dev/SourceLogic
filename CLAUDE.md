@@ -90,7 +90,7 @@ SourceLogic/
 │   │       ├── db_service.py    # DatabaseService — CRUD operations
 │   │       └── ingest_service.py # ChromaDB ingestion pipeline (asyncio.to_thread)
 │   │
-│   └── tests/                   # 78 test · coverage 77% · SQLite in-memory
+│   └── tests/                   # 104 test · coverage 82% · SQLite in-memory
 │       ├── conftest.py          # AsyncClient + in-memory SQLite fixtures, tenant override
 │       ├── test_admin.py        # Admin endpoints: create/list/revoke API key
 │       ├── test_auth.py         # Auth modes: dev, api_key, JWT
@@ -212,7 +212,7 @@ npm run build
 ### Testing
 - Backend: pytest + pytest-asyncio (`asyncio_mode = "auto"`) · SQLite in-memory
 - Frontend: Vitest + React Testing Library · jsdom
-- Target: ≥70% coverage backend (attuale: 77%) · fetch mockato con `vi.stubGlobal` nei test SSE
+- Target: ≥70% coverage backend (attuale: 82%) · fetch mockato con `vi.stubGlobal` nei test SSE
 - No mock del DB in integration test — SQLite in-memory reale
 - Patch `app.services.chat_service.settings` (non `os.environ`) per mock OPENAI_API_KEY
 

@@ -7,8 +7,8 @@
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-0.3-1C3C3C)
-![Tests](https://img.shields.io/badge/tests-78%20passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-77%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-104%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-82%25-brightgreen)
 [![CI](https://github.com/federico-orsi-dev/SourceLogic/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/federico-orsi-dev/SourceLogic/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -239,7 +239,7 @@ DATABASE_URL="sqlite+aiosqlite:///./data/ci.db" \
 uv run pytest -q --cov --cov-report=term-missing
 ```
 
-The backend suite uses an in-memory SQLite database with `StaticPool` — **no external services required**. 78 tests covering:
+The backend suite uses an in-memory SQLite database with `StaticPool` — **no external services required**. 104 tests covering:
 - All CRUD endpoints (workspaces, sessions, messages)
 - Authentication flows (dev mode, api_key mode, JWT, admin endpoints)
 - Rate limiting per API key
@@ -247,7 +247,7 @@ The backend suite uses an in-memory SQLite database with `StaticPool` — **no e
 - Database cascade deletes and constraints
 - SSE streaming behavior and error handling
 - ChatService and IngestionService with mock dependencies
-- Coverage: 77% (threshold: 70%)
+- Coverage: 82% (threshold: 70%)
 
 ```bash
 # Frontend tests (Vitest + React Testing Library)
