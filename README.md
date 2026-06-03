@@ -13,6 +13,10 @@
 
 ---
 
+![SourceLogic demo](docs/assets/demo.gif)
+
+---
+
 ## What it does
 
 SourceLogic indexes a local codebase into a vector store, then lets you ask natural-language questions about it. Each answer streams token-by-token via **Server-Sent Events** and includes **source citations** — file path, file name, and line number — so you always know where the information came from.
