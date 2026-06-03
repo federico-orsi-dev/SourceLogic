@@ -9,6 +9,7 @@
 ![LangChain](https://img.shields.io/badge/LangChain-0.3-1C3C3C)
 ![Tests](https://img.shields.io/badge/tests-78%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-77%25-brightgreen)
+[![CI](https://github.com/federico-orsi-dev/SourceLogic/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/federico-orsi-dev/SourceLogic/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
