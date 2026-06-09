@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # ── sessions.py — stream body with tokens (covers finally/save block) ─────────
+
 
 async def _stream_with_tokens(**_: Any) -> AsyncGenerator[dict[str, Any], None]:
     yield {"type": "citations", "citations": [{"file_name": "main.py", "extension": ".py"}]}
@@ -24,14 +24,19 @@ async def _stream_with_error(**_: Any) -> AsyncGenerator[dict[str, Any], None]:
     raise RuntimeError("LLM exploded")
 
 
-async def test_chat_stream_tokens_saved_to_db(client: AsyncClient, tmp_path: Path) -> None:
+async def test_chat_stream_tokens_saved_to_db(
+    client: AsyncClient, db_session: AsyncSession, tmp_path: Path
+) -> None:
     """Tokens emitted by stream_answer are persisted as a bot message via the finally block."""
     ws = await client.post("/workspaces", json={"name": "R", "root_path": str(tmp_path)})
     ws_id = ws.json()["id"]
     sess = await client.post(f"/workspaces/{ws_id}/sessions", json={"title": "S"})
     sess_id = sess.json()["session_id"]
 
-    with patch("app.api.v1.sessions.ChatService") as MockSvc:
+    with (
+        patch("app.api.v1.sessions.ChatService") as MockSvc,
+        patch("app.core.database.AsyncSessionLocal", return_value=db_session),
+    ):
         MockSvc.return_value.stream_answer = _stream_with_tokens
         resp = await client.post(
             f"/chat/{sess_id}/stream",
@@ -45,14 +50,19 @@ async def test_chat_stream_tokens_saved_to_db(client: AsyncClient, tmp_path: Pat
     assert "done" in text
 
 
-async def test_chat_stream_error_emits_error_event(client: AsyncClient, tmp_path: Path) -> None:
+async def test_chat_stream_error_emits_error_event(
+    client: AsyncClient, db_session: AsyncSession, tmp_path: Path
+) -> None:
     """An exception inside event_stream yields an error SSE event."""
     ws = await client.post("/workspaces", json={"name": "R", "root_path": str(tmp_path)})
     ws_id = ws.json()["id"]
     sess = await client.post(f"/workspaces/{ws_id}/sessions", json={"title": "S"})
     sess_id = sess.json()["session_id"]
 
-    with patch("app.api.v1.sessions.ChatService") as MockSvc:
+    with (
+        patch("app.api.v1.sessions.ChatService") as MockSvc,
+        patch("app.core.database.AsyncSessionLocal", return_value=db_session),
+    ):
         MockSvc.return_value.stream_answer = _stream_with_error
         resp = await client.post(
             f"/chat/{sess_id}/stream",
@@ -87,6 +97,7 @@ async def test_chat_stream_done_event_always_emitted(client: AsyncClient, tmp_pa
 
 # ── workspaces.py — _run_ingestion_task paths ─────────────────────────────────
 
+
 async def test_run_ingestion_task_success(tmp_path: Path) -> None:
     """_run_ingestion_task marks task as completed on success."""
     from app.api.v1.workspaces import _run_ingestion_task, ingestion_tasks
@@ -107,8 +118,10 @@ async def test_run_ingestion_task_success(tmp_path: Path) -> None:
 
     mock_ingest_result = {"indexed": 5, "skipped": 0}
 
-    with patch("app.core.database.AsyncSessionLocal", return_value=mock_db), \
-         patch("app.api.v1.workspaces.IngestionService") as mock_svc_cls:
+    with (
+        patch("app.core.database.AsyncSessionLocal", return_value=mock_db),
+        patch("app.api.v1.workspaces.IngestionService") as mock_svc_cls,
+    ):
         mock_svc = AsyncMock()
         mock_svc.ingest_codebase = AsyncMock(return_value=mock_ingest_result)
         mock_svc_cls.return_value = mock_svc
@@ -153,8 +166,10 @@ async def test_run_ingestion_task_exception() -> None:
     mock_db.__aenter__ = AsyncMock(return_value=mock_db)
     mock_db.__aexit__ = AsyncMock(return_value=False)
 
-    with patch("app.core.database.AsyncSessionLocal", return_value=mock_db), \
-         patch("app.api.v1.workspaces.IngestionService") as mock_svc_cls:
+    with (
+        patch("app.core.database.AsyncSessionLocal", return_value=mock_db),
+        patch("app.api.v1.workspaces.IngestionService") as mock_svc_cls,
+    ):
         mock_svc = AsyncMock()
         mock_svc.ingest_codebase = AsyncMock(side_effect=RuntimeError("disk full"))
         mock_svc_cls.return_value = mock_svc
@@ -168,6 +183,7 @@ async def test_run_ingestion_task_exception() -> None:
 async def test_prune_stale_tasks_removes_old_completed() -> None:
     """_prune_stale_tasks removes tasks completed more than 1h ago."""
     from datetime import UTC, datetime, timedelta
+
     from app.api.v1.workspaces import _prune_stale_tasks, ingestion_tasks
 
     old_time = (datetime.now(UTC) - timedelta(hours=2)).isoformat()

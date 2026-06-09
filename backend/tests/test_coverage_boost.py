@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 
-
 # ── logging_config ────────────────────────────────────────────────────────────
+
 
 async def test_configure_logging_sets_level() -> None:
     from app.core.logging_config import configure_logging
@@ -34,11 +34,17 @@ async def test_json_formatter_output() -> None:
 
     formatter = JsonFormatter()
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0,
-        msg="hello world", args=(), exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg="hello world",
+        args=(),
+        exc_info=None,
     )
     output = formatter.format(record)
     import json
+
     data = json.loads(output)
     assert data["message"] == "hello world"
     assert data["level"] == "INFO"
@@ -53,20 +59,28 @@ async def test_json_formatter_with_exception() -> None:
         raise ValueError("boom")
     except ValueError:
         import sys
+
         exc_info = sys.exc_info()
 
     record = logging.LogRecord(
-        name="test", level=logging.ERROR, pathname="", lineno=0,
-        msg="error", args=(), exc_info=exc_info,
+        name="test",
+        level=logging.ERROR,
+        pathname="",
+        lineno=0,
+        msg="error",
+        args=(),
+        exc_info=exc_info,
     )
     output = formatter.format(record)
     import json
+
     data = json.loads(output)
     assert "exc" in data
     assert "ValueError" in data["exc"]
 
 
 # ── database ──────────────────────────────────────────────────────────────────
+
 
 async def test_configure_sqlite_runs_pragma() -> None:
     """configure_sqlite() should execute WAL pragma without error."""
@@ -89,10 +103,10 @@ async def test_get_db_yields_session() -> None:
 
 # ── limiter ───────────────────────────────────────────────────────────────────
 
+
 async def test_rate_limit_key_api_key() -> None:
     from app.core.limiter import _rate_limit_key
     from starlette.requests import Request
-    from starlette.datastructures import Headers
 
     scope = {
         "type": "http",
@@ -140,6 +154,7 @@ async def test_rate_limit_key_falls_back_to_ip() -> None:
 
 
 # ── sessions — error paths ─────────────────────────────────────────────────────
+
 
 async def test_session_history_wrong_tenant(client: AsyncClient, tmp_path: Path) -> None:
     """Session belonging to another tenant returns 404."""
@@ -221,6 +236,7 @@ async def test_stream_chat_wrong_tenant_workspace(client: AsyncClient, tmp_path:
 
 # ── workspaces — ingest duplicate + delete error paths ────────────────────────
 
+
 async def test_ingest_duplicate_task_returns_409(client: AsyncClient, tmp_path: Path) -> None:
     ws = await client.post("/workspaces", json={"name": "R", "root_path": str(tmp_path)})
     ws_id = ws.json()["id"]
@@ -231,6 +247,7 @@ async def test_ingest_duplicate_task_returns_409(client: AsyncClient, tmp_path: 
 
         # Manually mark the task as still running
         from app.api.v1.workspaces import ingestion_tasks
+
         task_id = r1.json()["task_id"]
         ingestion_tasks[task_id]["status"] = "running"
 
@@ -254,9 +271,9 @@ async def test_delete_workspace_vector_error_returns_500(
 
 # ── admin — revoke already inactive / not-owner ───────────────────────────────
 
+
 async def test_revoke_api_key_wrong_tenant(client: AsyncClient) -> None:
     """Revoking a key belonging to a different tenant returns 404."""
-    import os
     from app.core.config import settings
 
     with patch.object(settings, "ADMIN_SECRET", "test-admin-secret"):
