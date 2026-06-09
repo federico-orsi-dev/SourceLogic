@@ -60,7 +60,8 @@ async def test_stream_answer_emits_citations(
     mock_llm = MagicMock()
     mock_llm.astream = MagicMock(return_value=_aiter(chunk_hello, chunk_world, chunk_stop))
 
-    with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
+    with patch("app.services.chat_service.settings") as mock_settings:
+        mock_settings.OPENAI_API_KEY = "test-key"
         svc = ChatService(db_session=mock_db_session, vectorstore=mock_vectorstore)
         with patch.object(svc, "_create_llm", return_value=mock_llm):
             events = [
@@ -91,7 +92,8 @@ async def test_stream_answer_token_content(
         )
     )
 
-    with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
+    with patch("app.services.chat_service.settings") as mock_settings:
+        mock_settings.OPENAI_API_KEY = "test-key"
         svc = ChatService(db_session=mock_db_session, vectorstore=mock_vectorstore)
         with patch.object(svc, "_create_llm", return_value=mock_llm):
             events = [
@@ -124,7 +126,8 @@ async def test_citations_contain_file_metadata(
     mock_llm = MagicMock()
     mock_llm.astream = MagicMock(return_value=_aiter())
 
-    with patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}):
+    with patch("app.services.chat_service.settings") as mock_settings:
+        mock_settings.OPENAI_API_KEY = "test-key"
         svc = ChatService(db_session=mock_db_session, vectorstore=mock_vectorstore)
         with patch.object(svc, "_create_llm", return_value=mock_llm):
             events = [
